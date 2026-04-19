@@ -11,6 +11,7 @@ Formats: JPEG, PNG, WEBP
 
 import os
 import re
+import html
 import logging
 
 import httpx
@@ -77,7 +78,10 @@ subject — factual English description of main subject, 40–70 words. What is 
 
 
 def _extract_vision_tag(text: str, tag: str) -> str:
-    m = re.search(rf'<{tag}[^>]*>([\s\S]*?)</{tag}>', text, re.IGNORECASE)
+    # (?=[>\s]) — після назви тегу має йти > або пробіл
+    # Це виключає <subjectType> при пошуку <subject>
+    pattern = rf'<{re.escape(tag)}(?=[>\s])[^>]*>([\s\S]*?)</{re.escape(tag)}>'
+    m = re.search(pattern, text, re.IGNORECASE)
     return m.group(1).strip() if m else ""
 
 
@@ -172,7 +176,7 @@ def _format_detected(params: dict, lang: str) -> str:
             f"💡 Освітлення: <b>{lighting_label}</b>\n"
             f"🌙 Настрій: <b>{mood_label}</b>\n"
             f"🌐 Жанр: <b>{genre_label}</b>\n\n"
-            f"📝 Субʼєкт:\n<i>{params['subject']}</i>\n\n"
+            f"📝 Субʼєкт:\n<i>{html.escape(params['subject'])}</i>\n\n"
             f"⏳ Генерую промпт…"
         )
     return (
@@ -182,7 +186,7 @@ def _format_detected(params: dict, lang: str) -> str:
         f"💡 Lighting: <b>{lighting_label}</b>\n"
         f"🌙 Mood: <b>{mood_label}</b>\n"
         f"🌐 Genre: <b>{genre_label}</b>\n\n"
-        f"📝 Subject:\n<i>{params['subject']}</i>\n\n"
+        f"📝 Subject:\n<i>{html.escape(params['subject'])}</i>\n\n"
         f"⏳ Generating prompt…"
     )
 
