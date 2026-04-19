@@ -218,25 +218,11 @@ async def cmd_vision_hint(message: Message) -> None:
         )
 
 
-@router.message(F.photo)
-async def handle_photo(message: Message) -> None:
-    """Handle any photo sent to bot — run vision analysis + generate prompt."""
-    lang = _detect_lang(message)
-
-    # Get largest photo size
-    photo: PhotoSize = message.photo[-1]
-
-    # Size check (Telegram doesn't expose file size directly before getFile,
-    # but file_size is available in PhotoSize for compressed photos)
-    if photo.file_size and photo.file_size > MAX_VISION_B:
-        err = "Файл завеликий. Максимум 4 МБ." if lang == "ua" else "File too large. Max 4 MB."
-        await message.answer(err)
-        return
-
-    wait_msg = await message.answer(
-        "📸 Аналізую зображення…" if lang == "ua" else "📸 Analyzing image…"
-    )
-
+async def _vision_pipeline(message: Message, photo: PhotoSize, lang: str, wait_msg) -> None:
+    """
+    Full vision pipeline: download → analyze → generate.
+    Runs as background task so webhook returns immediately (avoids Render 30s timeout).
+    """
     try:
         image_data, mime_type = await _download_photo(TG_BOT_TOKEN, photo.file_id)
     except Exception as e:
@@ -254,12 +240,7 @@ async def handle_photo(message: Message) -> None:
     detected_text = _format_detected(params, lang)
     await wait_msg.edit_text(detected_text, parse_mode="HTML")
 
-    # Build state for groq_generate
-    state = {
-        **params,
-        "lang": lang,
-        # style_group not needed by groq_generate
-    }
+    state = {**params, "lang": lang}
 
     try:
         result = await groq_generate(state, GROQ_API_KEY)
@@ -269,3 +250,27 @@ async def handle_photo(message: Message) -> None:
 
     text = format_result_message(state, result, lang)
     await message.answer(text, parse_mode="HTML")
+
+
+@router.message(F.photo)
+async def handle_photo(message: Message) -> None:
+    """
+    Handle any photo. Immediately acks, then runs pipeline as background task —
+    prevents Render Free 30s webhook timeout from killing the request.
+    """
+    import asyncio
+
+    lang = _detect_lang(message)
+    photo: PhotoSize = message.photo[-1]
+
+    if photo.file_size and photo.file_size > MAX_VISION_B:
+        err = "Файл завеликий. Максимум 4 МБ." if lang == "ua" else "File too large. Max 4 MB."
+        await message.answer(err)
+        return
+
+    wait_msg = await message.answer(
+        "📸 Аналізую зображення…" if lang == "ua" else "📸 Analyzing image…"
+    )
+
+    # Fire-and-forget: webhook returns immediately, pipeline continues in background
+    asyncio.create_task(_vision_pipeline(message, photo, lang, wait_msg))
