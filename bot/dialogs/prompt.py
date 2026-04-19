@@ -1,6 +1,9 @@
 """
-ZIT Bot — /prompt FSM Dialog
-Windows: subject → scene → style_group → style → lighting → mood → genre → [generate] → result
+ZIT Bot — /prompt FSM Dialog  (patched)
+Fixes:
+  - style_group: ScrollingGroup width=1 (was Select inline → all in one row)
+  - mood: ScrollingGroup width=2 (was Select inline → truncated)
+  - subject_type Window added between scene and style_group
 """
 
 import os
@@ -17,14 +20,13 @@ from aiogram_dialog.widgets.input import TextInput, ManagedTextInput
 
 from bot.states import ZitFSM
 from bot.getters import (
-    subject_getter, scene_getter, style_group_getter,
-    style_getter, lighting_getter, mood_getter, genre_getter,
-    result_getter,
+    subject_getter, scene_getter, subject_type_getter,
+    style_group_getter, style_getter, lighting_getter,
+    mood_getter, genre_getter, result_getter,
 )
 from prompts import groq_generate
 
 logger = logging.getLogger(__name__)
-
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 
@@ -47,6 +49,16 @@ async def on_scene_selected(
     item_id: str,
 ) -> None:
     manager.dialog_data["scene"] = item_id
+    await manager.next()
+
+
+async def on_subject_type_selected(
+    callback: CallbackQuery,
+    widget: Any,
+    manager: DialogManager,
+    item_id: str,
+) -> None:
+    manager.dialog_data["subject_type"] = item_id
     await manager.next()
 
 
@@ -109,7 +121,6 @@ async def on_mood_skip(
 
 
 async def _do_generate(callback: CallbackQuery, manager: DialogManager) -> None:
-    """Common generation logic: show typing, call API, store result, switch to result."""
     await callback.message.answer("⏳ Generating prompt…")
     state = dict(manager.dialog_data)
     try:
@@ -147,7 +158,6 @@ async def on_again(
     widget: Any,
     manager: DialogManager,
 ) -> None:
-    """Reset to subject input, keep language."""
     lang = manager.dialog_data.get("lang", "ua")
     manager.dialog_data.clear()
     manager.dialog_data["lang"] = lang
@@ -159,9 +169,8 @@ async def on_change(
     widget: Any,
     manager: DialogManager,
 ) -> None:
-    """Go back to scene selection to change parameters."""
-    # Clear result and generation, keep subject and lang
-    for k in ["result", "scene", "style_group", "style", "lighting", "mood", "genre"]:
+    for k in ["result", "scene", "subject_type", "style_group", "style",
+              "lighting", "mood", "genre"]:
         manager.dialog_data.pop(k, None)
     await manager.switch_to(ZitFSM.scene)
 
@@ -171,7 +180,6 @@ async def on_share(
     widget: Any,
     manager: DialogManager,
 ) -> None:
-    """Send prompt as copyable message."""
     result = manager.dialog_data.get("result", {})
     if "error" in result or not result.get("positive"):
         await callback.answer("Немає промпту для копіювання")
@@ -188,6 +196,7 @@ async def on_share(
 # ─── DIALOG ───────────────────────────────────────────────────────────────────
 
 prompt_dialog = Dialog(
+
     # ── 1. SUBJECT ──────────────────────────────────────────────────────────
     Window(
         Format("{text}"),
@@ -220,22 +229,51 @@ prompt_dialog = Dialog(
         getter=scene_getter,
     ),
 
-    # ── 3. STYLE GROUP ──────────────────────────────────────────────────────
+    # ── 3. SUBJECT TYPE ─────────────────────────────────────────────────────
+    # width=1: 6 пунктів, кожен на окремому рядку — повний текст, читабельно
     Window(
         Format("{text}"),
-        Select(
-            Format("{item[label]}"),
-            id="style_group_select",
-            item_id_getter=lambda x: x["id"],
-            items="style_groups",
-            on_click=on_style_group_selected,
+        ScrollingGroup(
+            Select(
+                Format("{item[label]}"),
+                id="subject_type_select",
+                item_id_getter=lambda x: x["id"],
+                items="subject_types",
+                on_click=on_subject_type_selected,
+            ),
+            id="subject_type_sg",
+            width=1,
+            height=6,
+        ),
+        Back(Const("◀ Назад")),
+        state=ZitFSM.subject_type,
+        getter=subject_type_getter,
+    ),
+
+    # ── 4. STYLE GROUP ──────────────────────────────────────────────────────
+    # FIX: ScrollingGroup width=1 замість голого Select
+    # Було: 5 кнопок в один рядок, текст обрізався ("Illustrat...", "3D / Ren...")
+    # Стало: 5 кнопок вертикально, повний текст
+    Window(
+        Format("{text}"),
+        ScrollingGroup(
+            Select(
+                Format("{item[label]}"),
+                id="style_group_select",
+                item_id_getter=lambda x: x["id"],
+                items="style_groups",
+                on_click=on_style_group_selected,
+            ),
+            id="style_group_sg",
+            width=1,
+            height=5,
         ),
         Back(Const("◀ Назад")),
         state=ZitFSM.style_group,
         getter=style_group_getter,
     ),
 
-    # ── 4. STYLE ────────────────────────────────────────────────────────────
+    # ── 5. STYLE ────────────────────────────────────────────────────────────
     Window(
         Format("{text}"),
         ScrollingGroup(
@@ -255,7 +293,7 @@ prompt_dialog = Dialog(
         getter=style_getter,
     ),
 
-    # ── 5. LIGHTING ─────────────────────────────────────────────────────────
+    # ── 6. LIGHTING ─────────────────────────────────────────────────────────
     Window(
         Format("{text}"),
         ScrollingGroup(
@@ -278,15 +316,23 @@ prompt_dialog = Dialog(
         getter=lighting_getter,
     ),
 
-    # ── 6. MOOD ─────────────────────────────────────────────────────────────
+    # ── 7. MOOD ─────────────────────────────────────────────────────────────
+    # FIX: ScrollingGroup width=2 height=5 замість голого Select
+    # Було: 8+ кнопок в один рядок, всі обрізані ("Te...", "Ser...", "My..."...)
+    # Стало: сітка 2×5, повні назви
     Window(
         Format("{text}"),
-        Select(
-            Format("{item[label]}"),
-            id="mood_select",
-            item_id_getter=lambda x: x["id"],
-            items="moods",
-            on_click=on_mood_selected,
+        ScrollingGroup(
+            Select(
+                Format("{item[label]}"),
+                id="mood_select",
+                item_id_getter=lambda x: x["id"],
+                items="moods",
+                on_click=on_mood_selected,
+            ),
+            id="moods_sg",
+            width=2,
+            height=5,
         ),
         Row(
             Button(Format("{skip_label}"), id="mood_skip", on_click=on_mood_skip),
@@ -296,7 +342,7 @@ prompt_dialog = Dialog(
         getter=mood_getter,
     ),
 
-    # ── 7. GENRE ────────────────────────────────────────────────────────────
+    # ── 8. GENRE ────────────────────────────────────────────────────────────
     Window(
         Format("{text}"),
         ScrollingGroup(
@@ -319,7 +365,7 @@ prompt_dialog = Dialog(
         getter=genre_getter,
     ),
 
-    # ── 8. RESULT ───────────────────────────────────────────────────────────
+    # ── 9. RESULT ───────────────────────────────────────────────────────────
     Window(
         Format("🎯 <b>Тема:</b> {subject}\n{params}\n\n{body}"),
         Row(

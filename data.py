@@ -479,7 +479,37 @@ GENRES: dict[str, dict] = {
 }
 
 
-# ─── SCENE NEGATIVES ──────────────────────────────────────────────────────────
+# ─── SUBJECTS ─────────────────────────────────────────────────────────────────
+
+SUBJECTS: dict[str, dict] = {
+    "none": {
+        "label": "— None —",
+        "value": "",
+    },
+    "person": {
+        "label": "Human",
+        "value": "a human subject with natural body proportions and a clear anatomical structure",
+    },
+    "animal": {
+        "label": "Animal",
+        "value": "an animal subject with species-specific anatomy and recognizable physical traits",
+    },
+    "product": {
+        "label": "Product",
+        "value": "a product with a recognizable design, defined shape, and clear structural form",
+    },
+    "object": {
+        "label": "Object",
+        "value": "a single object with a clear shape, solid structure, and identifiable form",
+    },
+    "environment": {
+        "label": "Environment",
+        "value": "an environment composed of spatial elements with a defined layout and relationships between structures",
+    },
+}
+
+
+
 
 SCENE_NEGATIVES: dict[str, list[str]] = {
     "portrait":     ["bad anatomy", "bad hands", "distorted face", "deformed fingers", "extra limbs", "blurry", "watermark", "text"],

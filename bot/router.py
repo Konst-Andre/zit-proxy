@@ -14,6 +14,7 @@ from aiogram_dialog import setup_dialogs, DialogManager, StartMode
 from bot.states import ZitFSM
 from bot.dialogs.prompt import prompt_dialog
 from bot.dialogs.random import router as random_router
+from bot.dialogs.vision import router as vision_router
 from bot.handlers import router as static_router
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ def create_dispatcher() -> Dispatcher:
     # Register routers (order matters — dialogs must be registered via setup_dialogs)
     dp.include_router(static_router)
     dp.include_router(random_router)
+    dp.include_router(vision_router)
     dp.include_router(prompt_entry_router)
 
     # Register aiogram-dialog dialogs

@@ -5,7 +5,7 @@ Provide data dictionaries to aiogram-dialog windows.
 
 from aiogram_dialog import DialogManager
 from data import (
-    SCENES, STYLE_GROUPS, STYLES, LIGHTINGS, MOODS, GENRES, UI
+    SCENES, STYLE_GROUPS, STYLES, LIGHTINGS, MOODS, GENRES, SUBJECTS, UI
 )
 
 
@@ -42,7 +42,21 @@ async def scene_getter(dialog_manager: DialogManager, **kwargs) -> dict:
     }
 
 
-# ─── STYLE GROUP ──────────────────────────────────────────────────────────────
+# ─── SUBJECT TYPE ─────────────────────────────────────────────────────────────
+
+async def subject_type_getter(dialog_manager: DialogManager, **kwargs) -> dict:
+    subject_types = [
+        {"id": k, "label": v["label"]}
+        for k, v in SUBJECTS.items()
+    ]
+    lang = _lang(dialog_manager)
+    text = "👤 <b>Тип субʼєкта</b>\n\nОбери категорію головного обʼєкта:" if lang == "ua" \
+        else "👤 <b>Subject type</b>\n\nSelect main subject category:"
+    return {
+        "text": text,
+        "subject_types": subject_types,
+    }
+
 
 async def style_group_getter(dialog_manager: DialogManager, **kwargs) -> dict:
     groups = [

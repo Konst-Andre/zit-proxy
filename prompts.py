@@ -6,7 +6,7 @@ Based on ZIT Prompt Engine v3.8.0
 
 import re
 import httpx
-from data import SCENES, STYLES, LIGHTINGS, MOODS, GENRES, SCENE_NEGATIVES
+from data import SCENES, STYLES, LIGHTINGS, MOODS, GENRES, SCENE_NEGATIVES, SUBJECTS
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 BOT_MODEL = "qwen/qwen3-32b"
@@ -121,28 +121,32 @@ def build_negative(scene: str) -> str:
 # ─── USER MESSAGE BUILDER ─────────────────────────────────────────────────────
 
 def build_user(state: dict) -> str:
-    scene_id   = state.get("scene", "portrait")
-    style_id   = state.get("style", "photorealistic")
-    lighting   = state.get("lighting", "Cinematic")
-    mood       = state.get("mood", "")
-    genre      = state.get("genre", "")
-    subject    = state.get("subject", "")
-    lang       = state.get("lang", "ua")
+    scene_id     = state.get("scene", "portrait")
+    style_id     = state.get("style", "photorealistic")
+    lighting     = state.get("lighting", "Cinematic")
+    mood         = state.get("mood", "")
+    genre        = state.get("genre", "")
+    subject      = state.get("subject", "")
+    subject_type = state.get("subject_type", "none")
+    lang         = state.get("lang", "ua")
 
     sc = SCENES.get(scene_id, SCENES["portrait"])
     st = STYLES.get(style_id, STYLES["photorealistic"])
     li = LIGHTINGS.get(lighting, LIGHTINGS["Cinematic"])
     mo = MOODS.get(mood, MOODS[""])
     ge = GENRES.get(genre, GENRES[""])
+    su = SUBJECTS.get(subject_type, SUBJECTS["none"])
 
     lang_str  = "Ukrainian" if lang == "ua" else "English"
     neg_hint  = build_negative(scene_id)
     genre_mod = ge.get("mod", "") or "none"
+    subj_detail = su.get("value", "") or "none"
 
     lines = [
         "Generate ZIT prompt:",
         f"Subject (translate to English if needed): {subject}",
         f"UI language: {lang_str}",
+        f"Subject detail: {subj_detail}",
         f"Scene: {sc['label']} | Detail: {sc['detail']}",
         f"Style: {st['label']} — {st['detail']}",
         f"Camera: {sc['camera']}",
