@@ -1,7 +1,7 @@
 """
-ZIT Bot — Prompt Engine
+LLM Prompt Generator Bot — Prompt Engine
 SYSTEM_PROMPT + buildUser() + groq_generate()
-Based on ZIT Prompt Engine v3.8.0
+Based on engine v4.0 (model-agnostic rebranding)
 """
 
 import re
@@ -15,14 +15,17 @@ TIMEOUT = 45.0
 
 # ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT_TEMPLATE = """You are a prompt engineer for ZIT (Z-Image Turbo), a Lumina2-based diffusion model with Qwen3-4B text encoder.
+SYSTEM_PROMPT_TEMPLATE = """You are an expert prompt engineer for AI image generation.
+Your task: build precise, layered, natural-language prompts
+that work across modern generative models — diffusion (Flux, SDXL, Stable Diffusion 3,
+Z-Image Turbo, Z-Image Base) and multimodal (Gemini Imagen, Qwen-VL, Midjourney-style).
 
-=== ARCHITECTURE CONSTRAINTS (NON-NEGOTIABLE) ===
-- CFG 1.5 optimal — never assume 6–8 like SDXL
-- Steps 10–15 (turbo mode)
-- Qwen3-4B reads full natural English prose — comma-spam tags are WRONG
+=== PROMPT QUALITY RULES ===
+- Write in natural English prose — avoid comma-spam tag lists
 - Forbidden tokens: masterpiece, best quality, highres, 8k, ultra-detailed
-- LoRA trigger = single word only, placed first in positive prompt
+  (These are SDXL-era artifacts that degrade modern model output)
+- Be specific and visual — describe what the eye sees, not abstract quality claims
+- One strong specific detail beats three vague quality adjectives
 
 === LAYER SYSTEM — PRIORITY ORDER ===
 Build the prompt in this layer order (highest to lowest priority):
@@ -88,10 +91,25 @@ SCENE → SUBJECT → STYLE → LIGHTING → GENRE (as prose phrase) → MOOD (a
 Scene-appropriate negative, 10–18 words maximum, concrete errors only.
 </negative>
 <notes>
-One concise ZIT-specific tip (CFG, steps, LoRA strength, sampler, or prompt structure).
-The tip must reference a specific element from THIS generated prompt — explain WHY
-this setting applies to this specific prompt, not a generic rule.
-LANGUAGE: write this tip in {NOTES_LANG}.
+Exactly 2 short tips specific to THIS generated prompt. Separate with a blank line.
+
+Tip 1 — WHY: explain why one specific element of this prompt works well visually.
+  Reference the actual content (lighting choice, style, mood combination, etc.)
+
+Tip 2 — ENHANCE: suggest one concrete improvement to make the image stronger.
+  Focus on whichever is most relevant:
+    COMPOSITION — framing, rule of thirds, negative space, leading lines, depth
+    ATMOSPHERE  — strengthen mood through light quality or environmental detail
+    STYLE TECHNIQUE — technique that would reinforce this particular style
+    COLOR PALETTE — dominant tones, contrast, or color harmony to add or adjust
+    SUBJECT FOCUS — how to better draw attention to the subject in this scene
+
+Rules for both tips:
+- Each tip: 1–2 sentences, direct and specific
+- NO mention of CFG, steps, schedulers, LoRA weights, or any technical parameters
+- Both tips must reference THIS prompt's actual content — no generic advice
+
+LANGUAGE: write both tips in {NOTES_LANG}.
 </notes>
 
 === VALIDATION BEFORE OUTPUT ===
@@ -103,6 +121,7 @@ Check all before returning:
 ✔ No forbidden tokens (masterpiece, best quality, highres, 8k, ultra-detailed)
 ✔ All XML tags present
 ✔ No text outside XML tags
+✔ <notes> contains exactly 2 tips, NO technical model parameters
 IF any check fails → regenerate once → if still fails → return minimal valid XML"""
 
 
@@ -153,8 +172,7 @@ def build_user(state: dict) -> str:
         f"Lighting: {li['value'] or 'none'}",
         f"Mood: {mo['value'] or 'none'}",
         f"Genre: {ge['value'] or 'none'} | Genre modifier (integrate as prose phrase): {genre_mod}",
-        "Resolution: 896×1152 (portrait) | CFG: 1.5 | Steps: 12",
-        "Sampler: euler_ancestral + beta",
+        "Resolution: 896×1152 (portrait)",
         f"Suggested negative (adapt if needed): {neg_hint}",
     ]
     return "\n".join(lines)

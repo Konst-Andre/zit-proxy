@@ -9,7 +9,7 @@ UI = {
     "ua": {
         "welcome": (
             "👋 Привіт, <b>{name}</b>!\n\n"
-            "Я <b>ZIT Prompt Generator</b> — генерую промпти для Lumina2, SDXL та ComfyUI.\n\n"
+            "Я <b>LLM Prompt Generator</b> — генерую структуровані промпти для AI-зображень.\n\n"
             "<b>Команди:</b>\n"
             "🎨 /prompt — генератор з параметрами\n"
             "🎲 /random — рандомний промпт\n"
@@ -17,7 +17,7 @@ UI = {
             "Або відкрий повний генератор:"
         ),
         "help": (
-            "📖 <b>ZIT Prompt Generator — Гайд</b>\n\n"
+            "📖 <b>LLM Prompt Generator — Гайд</b>\n\n"
             "<b>Команди:</b>\n"
             "• /prompt — інтерактивний генератор (сцена, стиль, освітлення, настрій, жанр)\n"
             "• /random — рандомна тема + параметри → одразу генерація\n"
@@ -46,7 +46,7 @@ UI = {
     "en": {
         "welcome": (
             "👋 Hi, <b>{name}</b>!\n\n"
-            "I'm <b>ZIT Prompt Generator</b> — generating prompts for Lumina2, SDXL and ComfyUI.\n\n"
+            "I'm <b>LLM Prompt Generator</b> — generating structured prompts for AI image generation.\n\n"
             "<b>Commands:</b>\n"
             "🎨 /prompt — generator with parameters\n"
             "🎲 /random — random prompt\n"
@@ -54,7 +54,7 @@ UI = {
             "Or open the full generator:"
         ),
         "help": (
-            "📖 <b>ZIT Prompt Generator — Guide</b>\n\n"
+            "📖 <b>LLM Prompt Generator — Guide</b>\n\n"
             "<b>Commands:</b>\n"
             "• /prompt — interactive generator (scene, style, lighting, mood, genre)\n"
             "• /random — random subject + parameters → instant generation\n"
