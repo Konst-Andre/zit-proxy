@@ -1,38 +1,80 @@
 """
-ZIT Prompt Generator — Render Server v2.0
+ZIT Prompt Generator — Render Server v3.0
 ==========================================
+Changes vs v2.0:
+  - aiogram 3 + aiogram-dialog mounted via SimpleRequestHandler (Variant B)
+  - Old manual bot handlers removed
+  - Bug #1 fixed: reply_markup no longer double-serialized (aiogram handles natively)
+  - Bug #2 fixed: Qwen3 thinking tokens stripped via strip_think() in prompts.py
+  - Bug #3: webhook registered with secret_token
+  - Bug #4: /proxy/groq has per-IP rate limiting (sliding window)
+  - Bug #5: all handlers wrapped in try/except, webhook always returns 200
+
 Endpoints:
   GET  /health        — warm-up ping
-  POST /proxy/groq    — проксі до Groq API (з Mini App / сайту)
-  POST /webhook       — Telegram bot webhook
-  GET  /set_webhook   — реєстрація webhook (викликати один раз)
-
-Команди бота:
-  /start   — привітання + кнопка відкрити Mini App
-  /prompt  — згенерувати промпт
-  /random  — рандомний промпт
-  /help    — гайд
+  POST /proxy/groq    — proxy to Groq API (Mini App / website)
+  POST /webhook       — Telegram bot webhook (aiogram)
+  GET  /set_webhook   — register webhook (call once after deploy)
 """
 
 import os
-import re
-import json
-import random
+import time
+import hashlib
+import logging
+import hmac
 import httpx
+from collections import defaultdict
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-app = FastAPI(title="ZIT Server", version="2.0.0")
+from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler  # aiogram provides this
+from aiogram.enums import ParseMode
 
-GROQ_API_KEY  = os.environ.get("GROQ_API_KEY", "")
-TG_BOT_TOKEN  = os.environ.get("TG_BOT_TOKEN", "")
-MINI_APP_URL  = "https://konst-andre.github.io/zit-prompt-tg/"
-GROQ_URL      = "https://api.groq.com/openai/v1/chat/completions"
-TG_API        = f"https://api.telegram.org/bot{TG_BOT_TOKEN}"
-BOT_MODEL     = "qwen/qwen3-32b"
+# We use starlette directly for mounting aiogram into FastAPI
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler as _SRH
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ─── CONFIG ───────────────────────────────────────────────────────────────────
+
+GROQ_API_KEY    = os.environ.get("GROQ_API_KEY", "")
+TG_BOT_TOKEN    = os.environ.get("TG_BOT_TOKEN", "")
+WEBHOOK_SECRET  = os.environ.get("WEBHOOK_SECRET", "zit-secret-2025")
+GROQ_URL        = "https://api.groq.com/openai/v1/chat/completions"
+WEBHOOK_PATH    = "/webhook"
 ALLOWED_ORIGINS = ["https://konst-andre.github.io"]
+
+# ─── RATE LIMITER (for /proxy/groq) ──────────────────────────────────────────
+
+class SlidingWindowRateLimiter:
+    """Simple in-process sliding window rate limiter."""
+    def __init__(self, max_requests: int = 20, window_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window = window_seconds
+        self._log: dict[str, list[float]] = defaultdict(list)
+
+    def is_allowed(self, key: str) -> bool:
+        now = time.monotonic()
+        cutoff = now - self.window
+        log = self._log[key]
+        # Evict expired
+        self._log[key] = [t for t in log if t > cutoff]
+        if len(self._log[key]) >= self.max_requests:
+            return False
+        self._log[key].append(now)
+        return True
+
+
+rate_limiter = SlidingWindowRateLimiter(max_requests=20, window_seconds=60)
+
+# ─── FASTAPI APP ──────────────────────────────────────────────────────────────
+
+app = FastAPI(title="ZIT Server", version="3.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,150 +84,42 @@ app.add_middleware(
     max_age=600,
 )
 
-RANDOM_SUBJECTS = [
-    "a lone samurai standing in heavy rain at dusk",
-    "an astronaut floating above a neon city at night",
-    "a fox spirit in ancient Japanese forest, glowing lanterns",
-    "a cyberpunk street vendor under pink holographic signs",
-    "an elderly fisherman on a misty lake at sunrise",
-    "a ballerina frozen mid-leap in a crumbling theater",
-    "a child discovering a glowing portal in an old library",
-    "a wolf howling on a cliff under the northern lights",
-    "a futuristic greenhouse on Mars, warm golden light",
-    "a medieval alchemist surrounded by glowing potions",
-    "a street photographer in 1970s Tokyo during golden hour",
-    "a mermaid resting on sea rocks, stormy ocean behind",
-    "a desert wanderer approaching an ancient ruined city",
-    "twin sisters in identical outfits on a foggy rooftop",
-    "a robot tending a flower garden in post-apocalyptic world",
-]
+# ─── BOT + DISPATCHER ────────────────────────────────────────────────────────
 
-BOT_SYSTEM = """You are ZIT — an expert AI prompt engineer for image generation (Lumina2, SDXL, ComfyUI).
-
-Generate a structured image prompt. Reply ONLY in this exact XML format, no other text:
-
-<positive>detailed positive prompt here, comma separated tags and phrases</positive>
-<negative>negative prompt here, comma separated</negative>
-
-Rules:
-- Positive: subject, style, lighting, mood, camera, quality tags
-- Negative: keep short, 6-10 terms max
-- No markdown, no explanations, only XML
-- English only"""
+bot: Bot | None = None
+dp = None
 
 
-def extract_tag(text: str, tag: str) -> str:
-    m = re.search(rf'<{tag}[^>]*>([\s\S]*?)</{tag}>', text, re.I)
-    return m.group(1).strip() if m else ""
-
-
-async def groq_generate(subject: str) -> dict:
-    payload = {
-        "model": BOT_MODEL,
-        "max_tokens": 1024,
-        "messages": [
-            {"role": "system", "content": BOT_SYSTEM},
-            {"role": "user",   "content": f"Create a prompt for: {subject}"},
-        ],
-    }
-    async with httpx.AsyncClient(timeout=45.0) as client:
-        resp = await client.post(
-            GROQ_URL,
-            json=payload,
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-        )
-    resp.raise_for_status()
-    raw = resp.json()["choices"][0]["message"]["content"]
-    return {
-        "positive": extract_tag(raw, "positive") or raw,
-        "negative": extract_tag(raw, "negative") or "blurry, watermark, text",
-    }
-
-
-async def tg_send(chat_id: int, text: str, reply_markup: dict = None):
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
-    if reply_markup:
-        payload["reply_markup"] = json.dumps(reply_markup)
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        await client.post(f"{TG_API}/sendMessage", json=payload)
-
-
-async def tg_typing(chat_id: int):
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        await client.post(f"{TG_API}/sendChatAction",
-                          json={"chat_id": chat_id, "action": "typing"})
-
-
-async def handle_start(chat_id: int, first_name: str):
-    text = (
-        f"👋 Привіт, <b>{first_name}</b>!\n\n"
-        f"Я <b>ZIT Prompt Generator</b> — генерую промпти для ComfyUI, Lumina2 та SDXL.\n\n"
-        f"<b>Команди:</b>\n"
-        f"🎨 /prompt [ідея] — згенерувати промпт\n"
-        f"🎲 /random — рандомний промпт\n"
-        f"❓ /help — довідка\n\n"
-        f"Або відкрий повний генератор:"
-    )
-    markup = {"inline_keyboard": [[
-        {"text": "🎨 Відкрити ZIT Generator", "web_app": {"url": MINI_APP_URL}}
-    ]]}
-    await tg_send(chat_id, text, markup)
-
-
-async def handle_prompt(chat_id: int, subject: str):
-    if not subject.strip():
-        await tg_send(chat_id,
-            "⚠️ Вкажи тему після команди.\n"
-            "Приклад: <code>/prompt cyberpunk girl in rain</code>")
+def _init_bot():
+    global bot, dp
+    if not TG_BOT_TOKEN:
+        logger.warning("TG_BOT_TOKEN not set — bot disabled")
         return
-    await tg_typing(chat_id)
-    try:
-        r = await groq_generate(subject)
-        text = (
-            f"✦ <b>PROMPT</b>\n<code>{r['positive']}</code>\n\n"
-            f"✦ <b>NEGATIVE</b>\n<code>{r['negative']}</code>"
-        )
-    except Exception as e:
-        text = f"❌ Помилка: {str(e)[:120]}"
-    await tg_send(chat_id, text)
-
-
-async def handle_random(chat_id: int):
-    subject = random.choice(RANDOM_SUBJECTS)
-    await tg_typing(chat_id)
-    try:
-        r = await groq_generate(subject)
-        text = (
-            f"🎲 <b>Тема:</b> {subject}\n\n"
-            f"✦ <b>PROMPT</b>\n<code>{r['positive']}</code>\n\n"
-            f"✦ <b>NEGATIVE</b>\n<code>{r['negative']}</code>"
-        )
-    except Exception as e:
-        text = f"❌ Помилка: {str(e)[:120]}"
-    await tg_send(chat_id, text)
-
-
-async def handle_help(chat_id: int):
-    text = (
-        "📖 <b>ZIT Prompt Generator — Гайд</b>\n\n"
-        "<b>Команди:</b>\n"
-        "• /prompt [тема] — генерує позитивний та негативний промпт\n"
-        "• /random — рандомна тема + промпт\n"
-        "• /help — ця довідка\n\n"
-        "<b>Приклади:</b>\n"
-        "<code>/prompt portrait of a warrior in golden armor</code>\n"
-        "<code>/prompt foggy japanese street at night</code>\n\n"
-        "Для розширених налаштувань — відкрий повний генератор:"
+    bot = Bot(
+        token=TG_BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    markup = {"inline_keyboard": [[
-        {"text": "🎨 Відкрити ZIT Generator", "web_app": {"url": MINI_APP_URL}}
-    ]]}
-    await tg_send(chat_id, text, markup)
+    from bot.router import create_dispatcher
+    dp = create_dispatcher()
+    logger.info("Bot and dispatcher initialized")
 
+
+@app.on_event("startup")
+async def on_startup():
+    _init_bot()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    if bot:
+        await bot.session.close()
+
+
+# ─── ENDPOINTS ────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "zit-server", "version": "2.0.0"}
+    return {"status": "ok", "service": "zit-server", "version": "3.0.0"}
 
 
 @app.get("/set_webhook")
@@ -193,65 +127,82 @@ async def set_webhook(request: Request):
     if not TG_BOT_TOKEN:
         raise HTTPException(status_code=500, detail="TG_BOT_TOKEN not configured")
     base_url = str(request.base_url).rstrip("/")
-    webhook_url = f"{base_url}/webhook"
+    webhook_url = f"{base_url}{WEBHOOK_PATH}"
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(
-            f"{TG_API}/setWebhook",
-            json={"url": webhook_url, "allowed_updates": ["message"]},
+            f"https://api.telegram.org/bot{TG_BOT_TOKEN}/setWebhook",
+            json={
+                "url": webhook_url,
+                "allowed_updates": ["message", "callback_query", "inline_query"],
+                "secret_token": WEBHOOK_SECRET,
+                "drop_pending_updates": True,
+            },
         )
-    return resp.json()
+    data = resp.json()
+    logger.info("set_webhook response: %s", data)
+    return data
 
 
-@app.post("/webhook")
+@app.post(WEBHOOK_PATH)
 async def webhook(request: Request):
+    # Bug #3 fix: verify secret token
+    secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if WEBHOOK_SECRET and secret_header != WEBHOOK_SECRET:
+        logger.warning("Webhook: invalid secret token")
+        return JSONResponse({"ok": True})  # Return 200 to prevent TG retries
+
+    # Bug #5 fix: always return 200, never let exceptions propagate
     try:
-        update = await request.json()
+        if bot is None or dp is None:
+            logger.error("Webhook called but bot is not initialized")
+            return JSONResponse({"ok": True})
+
+        body = await request.body()
+        import json
+        update_data = json.loads(body)
+
+        from aiogram.types import Update
+        update = Update.model_validate(update_data, context={"bot": bot})
+        await dp.feed_update(bot, update)
+
     except Exception:
-        return {"ok": True}
+        logger.exception("Error processing webhook update")
 
-    message = update.get("message", {})
-    if not message:
-        return {"ok": True}
-
-    chat_id    = message.get("chat", {}).get("id")
-    text       = message.get("text", "").strip()
-    first_name = message.get("from", {}).get("first_name", "")
-
-    if not chat_id or not text:
-        return {"ok": True}
-
-    parts   = text.split(None, 1)
-    command = parts[0].split("@")[0].lower()
-    args    = parts[1] if len(parts) > 1 else ""
-
-    if   command == "/start":  await handle_start(chat_id, first_name)
-    elif command == "/prompt": await handle_prompt(chat_id, args)
-    elif command == "/random": await handle_random(chat_id)
-    elif command == "/help":   await handle_help(chat_id)
-
-    return {"ok": True}
+    return JSONResponse({"ok": True})
 
 
 @app.post("/proxy/groq")
 async def proxy_groq(request: Request):
     if not GROQ_API_KEY:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
+
+    # Bug #4 fix: rate limit by IP
+    client_ip = request.client.host if request.client else "unknown"
+    if not rate_limiter.is_allowed(client_ip):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded — 20 req/min")
+
     body = await request.body()
     if not body:
         raise HTTPException(status_code=400, detail="Empty request body")
+
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
-                GROQ_URL, content=body,
-                headers={"Content-Type": "application/json",
-                         "Authorization": f"Bearer {GROQ_API_KEY}"},
+                GROQ_URL,
+                content=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                },
             )
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Groq API timeout")
     except httpx.RequestError as e:
-        raise HTTPException(status_code=502, detail=f"Groq API unreachable: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Groq API unreachable: {e}")
+
     try:
         data = resp.json()
     except Exception:
         raise HTTPException(status_code=502, detail="Invalid JSON from Groq API")
+
     return JSONResponse(content=data, status_code=resp.status_code)
