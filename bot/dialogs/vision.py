@@ -11,7 +11,6 @@ Formats: JPEG, PNG, WEBP
 
 import os
 import re
-import base64
 import logging
 
 import httpx
@@ -102,34 +101,20 @@ def _normalize_genre(val: str) -> str:
     return val if val in GENRES else ""
 
 
-async def _download_photo(bot_token: str, file_id: str) -> tuple[bytes, str]:
-    """Download photo bytes from Telegram, return (data, mime_type)."""
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        # Get file path
+async def _get_tg_file_url(bot_token: str, file_id: str) -> str:
+    """Get direct Telegram CDN URL for a file — no download needed."""
+    async with httpx.AsyncClient(timeout=15.0) as client:
         r = await client.get(
             f"https://api.telegram.org/bot{bot_token}/getFile",
             params={"file_id": file_id},
         )
         r.raise_for_status()
         file_path = r.json()["result"]["file_path"]
-
-        # Download
-        r2 = await client.get(
-            f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-        )
-        r2.raise_for_status()
-
-    # Determine mime type from extension
-    ext = file_path.rsplit(".", 1)[-1].lower()
-    mime_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
-                "png": "image/png", "webp": "image/webp"}
-    mime = mime_map.get(ext, "image/jpeg")
-    return r2.content, mime
+    return f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
 
 
-async def _vision_analyze(image_data: bytes, mime_type: str) -> dict:
-    """Call Llama-4-Scout with image, return parsed params dict."""
-    b64 = base64.b64encode(image_data).decode()
+async def _vision_analyze(image_url: str) -> dict:
+    """Call Llama-4-Scout with image URL (no base64), return parsed params dict."""
     payload = {
         "model": VISION_MODEL,
         "max_tokens": 512,
@@ -138,13 +123,13 @@ async def _vision_analyze(image_data: bytes, mime_type: str) -> dict:
             "content": [
                 {
                     "type": "image_url",
-                    "image_url": {"url": f"data:{mime_type};base64,{b64}"},
+                    "image_url": {"url": image_url},
                 },
                 {"type": "text", "text": VISION_SYSTEM},
             ],
         }],
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=45.0) as client:
         resp = await client.post(
             "https://api.groq.com/openai/v1/chat/completions",
             json=payload,
@@ -154,6 +139,7 @@ async def _vision_analyze(image_data: bytes, mime_type: str) -> dict:
 
     raw = resp.json()["choices"][0]["message"]["content"]
     cleaned = strip_think(raw)
+    logger.info("Vision raw response: %s", cleaned[:300])
 
     return {
         "scene":        _normalize_scene(_extract_vision_tag(cleaned, "scene")),
@@ -224,14 +210,14 @@ async def _vision_pipeline(message: Message, photo: PhotoSize, lang: str, wait_m
     Runs as background task so webhook returns immediately (avoids Render 30s timeout).
     """
     try:
-        image_data, mime_type = await _download_photo(TG_BOT_TOKEN, photo.file_id)
+        image_url = await _get_tg_file_url(TG_BOT_TOKEN, photo.file_id)
     except Exception as e:
-        logger.exception("Failed to download photo")
-        await wait_msg.edit_text(f"❌ Не вдалося завантажити фото: {str(e)[:100]}")
+        logger.exception("Failed to get file URL")
+        await wait_msg.edit_text(f"❌ Не вдалося отримати фото: {str(e)[:100]}")
         return
 
     try:
-        params = await _vision_analyze(image_data, mime_type)
+        params = await _vision_analyze(image_url)
     except Exception as e:
         logger.exception("Vision analysis failed")
         await wait_msg.edit_text(f"❌ Помилка аналізу: {str(e)[:100]}")
