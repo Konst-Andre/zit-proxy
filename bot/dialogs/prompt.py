@@ -471,7 +471,9 @@ prompt_dialog = Dialog(
         Row(
             Button(Format("{regen_label}"),     id="regen",     on_click=on_regen),
             Button(Format("{improve_label}"),   id="improve",   on_click=on_improve),
-            Button(Format("{realistic_label}"), id="realistic", on_click=on_realistic),
+        ),
+       Row(
+         Button(Format("{realistic_label}"), id="realistic", on_click=on_realistic),
             Button(Format("{lighting_label}"),  id="light_iter", on_click=on_lighting_iter),
         ),
         state=ZitFSM.result,
