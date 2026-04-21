@@ -1,6 +1,6 @@
 """
 LLM Prompt Generator Bot — Prompt Engine
-SYSTEM_PROMPT + buildUser() + groq_generate()
+SYSTEM_PROMPT + buildUser() + groq_generate() + groq_iterate()
 Based on engine v4.0 (model-agnostic rebranding)
 """
 
@@ -8,16 +8,16 @@ import re
 import httpx
 from data import SCENES, STYLES, LIGHTINGS, MOODS, GENRES, SCENE_NEGATIVES, SUBJECTS
 
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
 BOT_MODEL = "qwen/qwen3-32b"
 MAX_TOKENS = 2048
-TIMEOUT = 45.0
+TIMEOUT    = 45.0
 
 # ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT_TEMPLATE = """You are an expert prompt engineer for AI image generation.
 Your task: build precise, layered, natural-language prompts
-that work across modern generative models — diffusion (Flux, SDXL, Stable Diffusion 3,
+that work across modern generative models — diffusion (Flux, Stable Diffusion,
 Z-Image Turbo, Z-Image Base) and multimodal (Gemini Imagen, Qwen-VL, Midjourney-style).
 
 === PROMPT QUALITY RULES ===
@@ -156,9 +156,9 @@ def build_user(state: dict) -> str:
     ge = GENRES.get(genre, GENRES[""])
     su = SUBJECTS.get(subject_type, SUBJECTS["none"])
 
-    lang_str  = "Ukrainian" if lang == "ua" else "English"
-    neg_hint  = build_negative(scene_id)
-    genre_mod = ge.get("mod", "") or "none"
+    lang_str    = "Ukrainian" if lang == "ua" else "English"
+    neg_hint    = build_negative(scene_id)
+    genre_mod   = ge.get("mod", "") or "none"
     subj_detail = su.get("value", "") or "none"
 
     lines = [
@@ -176,6 +176,78 @@ def build_user(state: dict) -> str:
         f"Suggested negative (adapt if needed): {neg_hint}",
     ]
     return "\n".join(lines)
+
+
+# ─── ITERATION BUILDERS ───────────────────────────────────────────────────────
+
+ITERATE_INSTRUCTIONS: dict[str, str] = {
+    "improve": (
+        "Improve this prompt: deepen the atmosphere, add compositional specificity, "
+        "and strengthen the visual narrative. Keep the core subject, style, and scene."
+    ),
+    "realistic": (
+        "Rewrite this prompt to be more photorealistic: emphasize material surfaces, "
+        "realistic lighting physics, natural color response, and lens characteristics. "
+        "Remove painterly or stylized descriptors."
+    ),
+    "lighting": (
+        "Enhance only the lighting description: make the light source more specific, "
+        "describe shadow quality, direction, and atmospheric depth. "
+        "Keep subject, style, and mood unchanged."
+    ),
+}
+
+
+def build_iterate_user(positive: str, action: str, lang: str) -> str:
+    instruction = ITERATE_INSTRUCTIONS.get(action, ITERATE_INSTRUCTIONS["improve"])
+    lang_str    = "Ukrainian" if lang == "ua" else "English"
+    return (
+        f"Iteration task — {instruction}\n"
+        f"UI language: {lang_str}\n"
+        f"Do NOT output <changes> tag.\n"
+        f"Current prompt:\n\"{positive}\"\n\n/no_think"
+    )
+
+
+async def groq_iterate(positive: str, action: str, lang: str, api_key: str) -> dict:
+    """
+    Iterate on an existing positive prompt with a specific action.
+    Returns dict with keys: positive, negative, notes
+    """
+    system  = get_system_prompt(lang)
+    user    = build_iterate_user(positive, action, lang)
+    payload = {
+        "model":      BOT_MODEL,
+        "max_tokens": MAX_TOKENS,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user},
+        ],
+    }
+
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+                resp = await client.post(
+                    GROQ_URL,
+                    json=payload,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+            if resp.status_code == 429:
+                import asyncio
+                await asyncio.sleep(3 * (attempt + 1))
+                continue
+            if resp.status_code >= 500:
+                import asyncio
+                await asyncio.sleep(2)
+                continue
+            resp.raise_for_status()
+            raw = resp.json()["choices"][0]["message"]["content"]
+            return parse_response(raw)
+        except httpx.TimeoutException:
+            if attempt == 2:
+                raise
+    raise RuntimeError("Groq API: max retries exceeded")
 
 
 # ─── RESPONSE PARSER ──────────────────────────────────────────────────────────
@@ -243,11 +315,10 @@ async def groq_generate(state: dict, api_key: str) -> dict:
     """
     system_prompt = get_system_prompt(state.get("lang", "ua"))
     user_message  = build_user(state)
-    # Append /no_think for Qwen3
     user_message += "\n\n/no_think"
 
     payload = {
-        "model": BOT_MODEL,
+        "model":      BOT_MODEL,
         "max_tokens": MAX_TOKENS,
         "messages": [
             {"role": "system", "content": system_prompt},
