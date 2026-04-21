@@ -50,7 +50,7 @@ Respond with this exact XML structure:
 
 === FIELD RULES ===
 
-scene — camera FRAMING of the subject, NOT the background or environment type.
+scene — camera FRAMING of the subject.
   Rules by visible body area (for person subjects):
     portrait  = only face, head, neck visible — shoulders barely or not at all
     half_body = torso clearly visible, waist or hips in frame
@@ -60,14 +60,14 @@ scene — camera FRAMING of the subject, NOT the background or environment type.
   Non-person scenes: landscape | urban | interior | architecture | macro | product | concept
   Allowed: portrait | half_body | full_body | landscape | urban | interior | architecture | macro | animal | product | concept
 
-style — visual rendering style of the image itself.
+style — visual rendering style only.
   Choose style based only on clear visual rendering. Do not infer style.
   Allowed: photorealistic | cinematic | documentary | fashion | analog | monochrome |
            digital_art | concept_art | illustration | oil_painting | watercolor | pencil_sketch |
            impressionism | anime | manga | comic | ink_wash | ukiyo_e |
            3d_render | low_poly | isometric | pixel_art | flat_design | glitch
 
-subjectType — category of the main subject.
+subjectType — person | animal | product | object | environment
   person = any human | animal = any animal | product = manufactured object |
   object = natural/generic object | environment = no clear subject, scene itself
   Allowed: person | animal | product | object | environment
@@ -104,7 +104,7 @@ mood — emotional atmosphere. ONLY assign if CLEARLY AND STRONGLY present. Defa
   Allowed (exact label): Moody & atmospheric | Ethereal & dreamy | Tense & dramatic |
     Serene & peaceful | Mysterious | Epic & grand | Melancholic | Joyful & vibrant | Gritty & raw
 
-genre — stylistic/thematic genre. ONLY assign if UNMISTAKABLY present.
+mood — ONLY if CLEARLY present, else EMPTY.
   If unsure → leave EMPTY.
   Contemporary portrait, street photo, or nature photo = EMPTY.
   Do NOT assign Historical unless clothing/architecture is clearly pre-1950s period.
@@ -113,7 +113,7 @@ genre — stylistic/thematic genre. ONLY assign if UNMISTAKABLY present.
   Allowed (exact label): Cyberpunk | Fantasy | Dark Fantasy | Sci-Fi | Solarpunk | Noir |
     Post-Apocalyptic | Historical | Mythological | Surreal | Horror | Futuristic
 
-subject — factual English description of the main subject. Only describe what is clearly visible.
+subject — factual English description of main subject, 40–70 words. What is VISIBLE only."""
   Do NOT describe lighting, style, mood, or atmosphere — these are separate fields.
   Do NOT infer materials, textures, or details not clearly visible.
   Word count by subjectType:
