@@ -41,7 +41,7 @@ UI = {
         "change": "✏️ Змінити",
         "share": "⤴ Поділитись",
         "error": "❌ Помилка генерації: {err}",
-        "open_app": "🎨 Відкрити ZIT Generator",
+        "open_app": "🫧 Відкрити генератор",
     },
     "en": {
         "welcome": (
@@ -78,7 +78,7 @@ UI = {
         "change": "✏️ Change",
         "share": "⤴ Share",
         "error": "❌ Generation error: {err}",
-        "open_app": "🎨 Open ZIT Generator",
+        "open_app": "🫧 Open Generator",
     },
 }
 
