@@ -2,9 +2,9 @@
 ZIT Bot — /prompt FSM Dialog  (iteration loop patch)
 Adds 4 iteration buttons to result Window:
   ↺ Повтор     — regenerate same params
-  ↑ Покращити  — improve detail/atmosphere
-  📷 Реально   — make more photorealistic
-  💡 Світло    — enhance lighting description
+  ↑ Покращити   — improve detail/atmosphere
+  📷 Фотореал  — make more photorealistic
+  💡 Освітлення — enhance lighting description
 """
 
 import os
@@ -459,22 +459,22 @@ prompt_dialog = Dialog(
     ),
 
     # ── 9. RESULT ───────────────────────────────────────────────────────────
-    # Row 1 — navigation: повний рестарт / змінити / поділитись
-    # Row 2 — iteration:  повтор / покращити / реалістично / світло
+    # Row 1: 🔄 Нова тема  |  ↑ Покращити
+    # Row 2: 📷 Фотореал   |  💡 Освітлення
+    # Row 3: ↺ Повтор      |  ⤴ Поділитись
     Window(
         Format("🎯 <b>Тема:</b> {subject}\n{params}\n\n{body}"),
         Row(
-            Button(Format("{again_label}"),  id="again",  on_click=on_again),
-            Button(Format("{change_label}"), id="change", on_click=on_change),
-            Button(Format("{share_label}"),  id="share",  on_click=on_share),
+            Button(Format("{new_label}"),     id="new",     on_click=on_again),
+            Button(Format("{improve_label}"), id="improve", on_click=on_improve),
         ),
         Row(
-            Button(Format("{regen_label}"),     id="regen",     on_click=on_regen),
-            Button(Format("{improve_label}"),   id="improve",   on_click=on_improve),
-        ),
-       Row(
-         Button(Format("{realistic_label}"), id="realistic", on_click=on_realistic),
+            Button(Format("{realistic_label}"), id="realistic",  on_click=on_realistic),
             Button(Format("{lighting_label}"),  id="light_iter", on_click=on_lighting_iter),
+        ),
+        Row(
+            Button(Format("{regen_label}"),  id="regen",  on_click=on_regen),
+            Button(Format("{share_label}"),  id="share",  on_click=on_share),
         ),
         state=ZitFSM.result,
         getter=result_getter,
