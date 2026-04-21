@@ -33,11 +33,51 @@ def _detect_lang(query: InlineQuery) -> str:
     return "ua" if lc.startswith("uk") else "en"
 
 
+def _detect_scene(subject: str) -> str:
+    """Detect scene type from subject keywords."""
+    s = subject.lower()
+    if any(w in s for w in [
+        "landscape", "пейзаж", "ліс", "forest", "гори", "mountain",
+        "море", "ocean", "sea", "місто", "city", "street", "вулиця",
+        "поле", "field", "річка", "river", "озеро", "lake", "природа", "nature",
+    ]):
+        return "landscape"
+    if any(w in s for w in [
+        "full body", "на повний зріст", "стоїть", "standing",
+        "іде", "йде", "walking", "running", "біжить", "танцює", "dancing",
+        "full length", "в повний зріст",
+    ]):
+        return "full_body"
+    if any(w in s for w in [
+        "interior", "кімната", "room", "cafe", "кафе",
+        "office", "офіс", "library", "бібліотека", "kitchen", "кухня",
+        "bedroom", "спальня", "studio", "студія",
+    ]):
+        return "interior"
+    if any(w in s for w in [
+        "animal", "тварина", "кіт", "cat", "пес", "dog",
+        "кінь", "horse", "вовк", "wolf", "лисиця", "fox",
+        "птах", "bird", "орел", "eagle", "ведмідь", "bear",
+    ]):
+        return "animal"
+    if any(w in s for w in [
+        "urban", "street", "вулиця", "alley", "провулок",
+        "downtown", "центр міста", "subway", "метро",
+    ]):
+        return "urban"
+    if any(w in s for w in [
+        "product", "продукт", "watch", "годинник", "perfume", "парфум",
+        "bottle", "пляшка", "shoe", "взуття", "sneaker", "кросівок",
+    ]):
+        return "product"
+    return "portrait"
+
+
 def _build_state(subject: str, lang: str) -> dict:
     """Default state for inline — no FSM, fixed params."""
     return {
         "subject":      subject,
-        "scene":        "portrait",
+        "scene":        _detect_scene(subject),
         "style":        "photorealistic",
         "lighting":     "Cinematic",
         "mood":         "",
