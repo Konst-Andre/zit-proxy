@@ -1,9 +1,10 @@
 """
-ZIT Bot — /prompt FSM Dialog  (patched)
-Fixes:
-  - style_group: ScrollingGroup width=1 (was Select inline → all in one row)
-  - mood: ScrollingGroup width=2 (was Select inline → truncated)
-  - subject_type Window added between scene and style_group
+ZIT Bot — /prompt FSM Dialog  (iteration loop patch)
+Adds 4 iteration buttons to result Window:
+  ↺ Повтор     — regenerate same params
+  ↑ Покращити  — improve detail/atmosphere
+  📷 Реально   — make more photorealistic
+  💡 Світло    — enhance lighting description
 """
 
 import os
@@ -24,7 +25,7 @@ from bot.getters import (
     style_group_getter, style_getter, lighting_getter,
     mood_getter, genre_getter, result_getter,
 )
-from prompts import groq_generate
+from prompts import groq_generate, groq_iterate
 
 logger = logging.getLogger(__name__)
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
@@ -158,6 +159,7 @@ async def on_again(
     widget: Any,
     manager: DialogManager,
 ) -> None:
+    """Full restart — clear all state, go to subject."""
     lang = manager.dialog_data.get("lang", "ua")
     manager.dialog_data.clear()
     manager.dialog_data["lang"] = lang
@@ -169,6 +171,7 @@ async def on_change(
     widget: Any,
     manager: DialogManager,
 ) -> None:
+    """Keep subject, restart from scene."""
     for k in ["result", "scene", "subject_type", "style_group", "style",
               "lighting", "mood", "genre"]:
         manager.dialog_data.pop(k, None)
@@ -185,12 +188,109 @@ async def on_share(
         await callback.answer("Немає промпту для копіювання")
         return
     share_text = (
-        f"<b>ZIT PROMPT</b>\n\n"
+        f"<b>PROMPT</b>\n\n"
         f"<b>+</b> <code>{result['positive']}</code>\n\n"
         f"<b>–</b> <code>{result['negative']}</code>"
     )
     await callback.message.answer(share_text)
     await callback.answer()
+
+
+# ─── ITERATION CALLBACKS ──────────────────────────────────────────────────────
+
+async def _do_iterate(
+    callback: CallbackQuery,
+    manager: DialogManager,
+    action: str,
+) -> None:
+    """
+    Core iteration handler.
+    Takes current positive → calls groq_iterate(action) → updates result.
+    Shows toast while processing (Telegram non-blocking answer).
+    """
+    result = manager.dialog_data.get("result", {})
+    positive = result.get("positive", "")
+
+    if not positive:
+        await callback.answer("Немає промпту для ітерації")
+        return
+
+    lang = manager.dialog_data.get("lang", "ua")
+
+    # Notify user — toast stays visible ~5s while Groq processes
+    wait_labels = {
+        "improve":   ("⏳ Покращую...",  "⏳ Improving..."),
+        "realistic": ("⏳ Роблю реальніше...", "⏳ Making realistic..."),
+        "lighting":  ("⏳ Змінюю освітлення...", "⏳ Adjusting lighting..."),
+    }
+    ua_txt, en_txt = wait_labels.get(action, ("⏳ Обробляю...", "⏳ Processing..."))
+    # Send temporary chat message (visible during processing)
+    wait_msg = await callback.message.answer(ua_txt if lang == "ua" else en_txt)
+
+    try:
+        new_result = await groq_iterate(positive, action, lang, GROQ_API_KEY)
+        manager.dialog_data["result"] = new_result
+    except Exception as e:
+        logger.exception("groq_iterate failed (action=%s)", action)
+        manager.dialog_data["result"] = {"error": str(e)[:200]}
+    finally:
+        try:
+            await wait_msg.delete()
+        except Exception:
+            pass
+
+    await manager.switch_to(ZitFSM.result)
+    await callback.answer()
+
+
+async def on_regen(
+    callback: CallbackQuery,
+    widget: Any,
+    manager: DialogManager,
+) -> None:
+    """Regenerate with exactly the same params — new Groq call."""
+    lang = manager.dialog_data.get("lang", "ua")
+    wait_msg = await callback.message.answer(
+        "⏳ Перегенеровую..." if lang == "ua" else "⏳ Regenerating..."
+    )
+    state = dict(manager.dialog_data)
+    try:
+        result = await groq_generate(state, GROQ_API_KEY)
+        manager.dialog_data["result"] = result
+    except Exception as e:
+        logger.exception("groq_generate (regen) failed")
+        manager.dialog_data["result"] = {"error": str(e)[:200]}
+    finally:
+        try:
+            await wait_msg.delete()
+        except Exception:
+            pass
+    await manager.switch_to(ZitFSM.result)
+    await callback.answer()
+
+
+async def on_improve(
+    callback: CallbackQuery,
+    widget: Any,
+    manager: DialogManager,
+) -> None:
+    await _do_iterate(callback, manager, "improve")
+
+
+async def on_realistic(
+    callback: CallbackQuery,
+    widget: Any,
+    manager: DialogManager,
+) -> None:
+    await _do_iterate(callback, manager, "realistic")
+
+
+async def on_lighting_iter(
+    callback: CallbackQuery,
+    widget: Any,
+    manager: DialogManager,
+) -> None:
+    await _do_iterate(callback, manager, "lighting")
 
 
 # ─── DIALOG ───────────────────────────────────────────────────────────────────
@@ -230,7 +330,6 @@ prompt_dialog = Dialog(
     ),
 
     # ── 3. SUBJECT TYPE ─────────────────────────────────────────────────────
-    # width=1: 6 пунктів, кожен на окремому рядку — повний текст, читабельно
     Window(
         Format("{text}"),
         ScrollingGroup(
@@ -251,9 +350,6 @@ prompt_dialog = Dialog(
     ),
 
     # ── 4. STYLE GROUP ──────────────────────────────────────────────────────
-    # FIX: ScrollingGroup width=1 замість голого Select
-    # Було: 5 кнопок в один рядок, текст обрізався ("Illustrat...", "3D / Ren...")
-    # Стало: 5 кнопок вертикально, повний текст
     Window(
         Format("{text}"),
         ScrollingGroup(
@@ -317,9 +413,6 @@ prompt_dialog = Dialog(
     ),
 
     # ── 7. MOOD ─────────────────────────────────────────────────────────────
-    # FIX: ScrollingGroup width=2 height=5 замість голого Select
-    # Було: 8+ кнопок в один рядок, всі обрізані ("Te...", "Ser...", "My..."...)
-    # Стало: сітка 2×5, повні назви
     Window(
         Format("{text}"),
         ScrollingGroup(
@@ -366,12 +459,20 @@ prompt_dialog = Dialog(
     ),
 
     # ── 9. RESULT ───────────────────────────────────────────────────────────
+    # Row 1 — navigation: повний рестарт / змінити / поділитись
+    # Row 2 — iteration:  повтор / покращити / реалістично / світло
     Window(
         Format("🎯 <b>Тема:</b> {subject}\n{params}\n\n{body}"),
         Row(
             Button(Format("{again_label}"),  id="again",  on_click=on_again),
             Button(Format("{change_label}"), id="change", on_click=on_change),
             Button(Format("{share_label}"),  id="share",  on_click=on_share),
+        ),
+        Row(
+            Button(Format("{regen_label}"),     id="regen",     on_click=on_regen),
+            Button(Format("{improve_label}"),   id="improve",   on_click=on_improve),
+            Button(Format("{realistic_label}"), id="realistic", on_click=on_realistic),
+            Button(Format("{lighting_label}"),  id="light_iter", on_click=on_lighting_iter),
         ),
         state=ZitFSM.result,
         getter=result_getter,
