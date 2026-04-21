@@ -49,91 +49,33 @@ Respond with this exact XML structure:
 </vision>
 
 === FIELD RULES ===
+scene — camera FRAMING of the subject.
+  portrait = only face/head visible | half_body = torso visible | full_body = knees/feet visible
+  Non-person: landscape | urban | interior | architecture | macro | animal | product | concept
+  Allowed: portrait | half_body | full_body | landscape | urban | interior | architecture | macro | animal | product | concept
 
-scene — camera FRAMING of the subject, NOT the background or environment type.
-  Rules by visible body area (for person subjects):
-    portrait  = only face, head, neck visible — shoulders barely or not at all
-    half\_body = torso clearly visible, waist or hips in frame
-    full\_body = knees or feet visible — entire body in shot
-  If a person is clearly the main subject, do NOT choose interior, urban, or landscape.
-  If subjectType=animal → scene=animal (do not use portrait/half\_body/full\_body for animals).
-  Non-person scenes: landscape | urban | interior | architecture | macro | product | concept
-  Allowed: portrait | half\_body | full\_body | landscape | urban | interior | architecture | macro | animal | product | concept
-
-style — visual rendering style of the image itself.
-  Choose style based only on clear visual rendering. Do not infer style.
+style — visual rendering style only.
   Allowed: photorealistic | cinematic | documentary | fashion | analog | monochrome |
-           digital\_art | concept\_art | illustration | oil\_painting | watercolor | pencil\_sketch |
-           impressionism | anime | manga | comic | ink\_wash | ukiyo\_e |
-           3d\_render | low\_poly | isometric | pixel\_art | flat\_design | glitch
+           digital_art | concept_art | illustration | oil_painting | watercolor | pencil_sketch |
+           impressionism | anime | manga | comic | ink_wash | ukiyo_e |
+           3d_render | low_poly | isometric | pixel_art | flat_design | glitch
 
-subjectType — category of the main subject.
-  person = any human | animal = any animal | product = manufactured object |
-  object = natural/generic object | environment = no clear subject, scene itself
-  Allowed: person | animal | product | object | environment
+subjectType — person | animal | product | object | environment
 
-lighting — dominant light source and quality visible in the image.
-  Golden Hour     = warm orange/yellow sun near horizon, long shadows
-  Blue Hour       = cool blue twilight, post-sunset or pre-dawn
-  Cinematic       = strong contrast with clearly stylized or film-like lighting
-  Soft Natural    = diffused natural daylight with soft shadows, not fully overcast
-  Rim Light       = strong backlight creating edge glow, dark background
-  Neon / LED      = colored artificial light, neon signs or LED strips
-  Volumetric Rays = visible god-rays or light beams through air/dust
-  Studio Softbox  = controlled indoor studio light, soft and even
-  Candlelight     = warm flickering very low light, intimate
-  Moonlight       = cool blue-white night light
-  Overcast        = cloudy sky with soft, shadowless light
-  Harsh Midday    = strong overhead sun, hard dark shadows
-  Allowed (exact label): Cinematic | Soft Natural | Golden Hour | Blue Hour | Overcast |
-    Rim Light | Neon / LED | Volumetric Rays | Studio Softbox | Candlelight | Moonlight | Harsh Midday
+lighting — Cinematic | Soft Natural | Golden Hour | Blue Hour | Overcast |
+           Rim Light | Neon / LED | Volumetric Rays | Studio Softbox | Candlelight | Moonlight | Harsh Midday
+  Always assign lighting — never leave empty.
 
-mood — emotional atmosphere. ONLY assign if CLEARLY AND STRONGLY present. Default = EMPTY.
-  If unsure → leave EMPTY.
-  Ethereal \& dreamy   = hazy soft glow, floating or weightless feel, overexposed soft tones.
-                        DO NOT assign just because the subject is a woman or the light is soft.
-  Moody \& atmospheric = heavy shadow dominating the frame, tension, dark oppressive tones
-  Tense \& dramatic    = clear conflict, confrontation, or extreme contrast
-  Serene \& peaceful   = explicitly calm, open space, gentle soft light, relaxed expression
-  Mysterious          = subject obscured, face hidden, fog, enigmatic framing
-  Epic \& grand        = vast landscape scale, heroic pose, sweeping sky
-  Melancholic         = explicitly sad expression, muted desaturated tones, isolation
-  Joyful \& vibrant    = clearly bright, high saturation, laughter or energetic expression
-  Gritty \& raw        = harsh unfiltered realism, rough texture, street/documentary feel
-  If the mood is neutral, ordinary, or ambiguous — leave EMPTY.
-  Allowed (exact label): Moody \& atmospheric | Ethereal \& dreamy | Tense \& dramatic |
-    Serene \& peaceful | Mysterious | Epic \& grand | Melancholic | Joyful \& vibrant | Gritty \& raw
+mood — ONLY if CLEARLY present, else EMPTY.
+  Allowed: Moody & atmospheric | Ethereal & dreamy | Tense & dramatic | Serene & peaceful |
+           Mysterious | Epic & grand | Melancholic | Joyful & vibrant | Gritty & raw
 
-genre — stylistic/thematic genre. ONLY assign if UNMISTAKABLY present.
-  If unsure → leave EMPTY.
-  Contemporary portrait, street photo, or nature photo = EMPTY.
-  Do NOT assign Historical unless clothing/architecture is clearly pre-1950s period.
-  Do NOT assign Fantasy/Sci-Fi/Mythological unless fantastical elements are literally visible.
-  CRITICAL: if style is anime | manga | illustration | digital\_art | concept\_art → genre EMPTY
-  Allowed (exact label): Cyberpunk | Fantasy | Dark Fantasy | Sci-Fi | Solarpunk | Noir |
-    Post-Apocalyptic | Historical | Mythological | Surreal | Horror | Futuristic
+genre — ONLY if UNMISTAKABLY present, else EMPTY.
+  Allowed: Cyberpunk | Fantasy | Dark Fantasy | Sci-Fi | Solarpunk | Noir |
+           Post-Apocalyptic | Historical | Mythological | Surreal | Horror | Futuristic
 
-subject — factual English description of the main subject. Only describe what is clearly visible.
-  Do NOT describe lighting, style, mood, or atmosphere — these are separate fields.
-  Do NOT infer materials, textures, or details not clearly visible.
-  Word count by subjectType:
-    person:      60-70 words. Include: apparent age, gender, hair (color, length, style),
-                 facial features, eye color if clearly visible, visible clothing (type and color),
-                 pose, facial expression only if explicitly visible, accessories.
-    animal:      40-50 words. Include: species, visible physical traits (color, pattern),
-                 pose, posture, and immediate surroundings.
-    environment: 50-60 words. Describe: location type, key elements, spatial layout,
-                 foreground and background structure, and clearly visible conditions.
-    object:      35-45 words. Describe: object type, shape, color, visible components,
-                 orientation, and immediate context.
+subject — factual English description of main subject, 40–70 words. What is VISIBLE only."""
 
-=== STRICT RULES ===
-Use ONLY the exact id/label values listed above.
-Always assign lighting — choose the closest matching label, never leave empty.
-If image is black and white or grayscale → style=monochrome.
-Leave mood EMPTY unless the atmosphere is unmistakable.
-Leave genre EMPTY for realistic photos, anime/illustration styles, and nature/portrait shots.
-scene must reflect camera framing of subject, not background type."""
 
 def _extract_vision_tag(text: str, tag: str) -> str:
     # (?=[>\s]) — після назви тегу має йти > або пробіл
