@@ -136,12 +136,14 @@ async def genre_getter(dialog_manager: DialogManager, **kwargs) -> dict:
 # Iteration button labels per language
 _ITER_LABELS = {
     "ua": {
+        "new":       "🔄 Нова тема",
         "regen":     "↺ Повтор",
         "improve":   "↑ Покращити",
-        "realistic": "📷 Реально",
-        "lighting":  "💡 Світло",
+        "realistic": "📷 Фотореал",
+        "lighting":  "💡 Освітлення",
     },
     "en": {
+        "new":       "🔄 New topic",
         "regen":     "↺ Regen",
         "improve":   "↑ Improve",
         "realistic": "📷 Realistic",
@@ -193,15 +195,14 @@ async def result_getter(dialog_manager: DialogManager, **kwargs) -> dict:
     iter_lbl = _ITER_LABELS.get(lang, _ITER_LABELS["en"])
 
     return {
-        "params":           params,
-        "subject":          data.get("subject", ""),
-        "body":             body,
-        "again_label":      UI[lang]["again"],
-        "change_label":     UI[lang]["change"],
-        "share_label":      UI[lang]["share"],
-        # iteration buttons
-        "regen_label":      iter_lbl["regen"],
-        "improve_label":    iter_lbl["improve"],
-        "realistic_label":  iter_lbl["realistic"],
-        "lighting_label":   iter_lbl["lighting"],
+           "params":                  params,
+           "subject":                data.get("subject", ""),
+           "body":                     body,
+           "new_label":             iter_lbl["new"],        # ← нова merged кнопка
+           "regen_label":          iter_lbl["regen"],
+           "improve_label":       iter_lbl["improve"],
+           "realistic_label":    iter_lbl["realistic"],
+           "lighting_label":      iter_lbl["lighting"],
+           "share_label":           UI[lang]["share"],
+           # again_label і change_label  більше не потрібні
     }
