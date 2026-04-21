@@ -50,24 +50,24 @@ Respond with this exact XML structure:
 
 === FIELD RULES ===
 
-scene — camera FRAMING of the subject.
+scene — camera FRAMING of the subject, NOT the background or environment type.
   Rules by visible body area (for person subjects):
     portrait  = only face, head, neck visible — shoulders barely or not at all
-    half_body = torso clearly visible, waist or hips in frame
-    full_body = knees or feet visible — entire body in shot
+    half\_body = torso clearly visible, waist or hips in frame
+    full\_body = knees or feet visible — entire body in shot
   If a person is clearly the main subject, do NOT choose interior, urban, or landscape.
-  If subjectType=animal → scene=animal (do not use portrait/half_body/full_body for animals).
+  If subjectType=animal → scene=animal (do not use portrait/half\_body/full\_body for animals).
   Non-person scenes: landscape | urban | interior | architecture | macro | product | concept
-  Allowed: portrait | half_body | full_body | landscape | urban | interior | architecture | macro | animal | product | concept
+  Allowed: portrait | half\_body | full\_body | landscape | urban | interior | architecture | macro | animal | product | concept
 
-style — visual rendering style only.
+style — visual rendering style of the image itself.
   Choose style based only on clear visual rendering. Do not infer style.
   Allowed: photorealistic | cinematic | documentary | fashion | analog | monochrome |
-           digital_art | concept_art | illustration | oil_painting | watercolor | pencil_sketch |
-           impressionism | anime | manga | comic | ink_wash | ukiyo_e |
-           3d_render | low_poly | isometric | pixel_art | flat_design | glitch
+           digital\_art | concept\_art | illustration | oil\_painting | watercolor | pencil\_sketch |
+           impressionism | anime | manga | comic | ink\_wash | ukiyo\_e |
+           3d\_render | low\_poly | isometric | pixel\_art | flat\_design | glitch
 
-subjectType — person | animal | product | object | environment
+subjectType — category of the main subject.
   person = any human | animal = any animal | product = manufactured object |
   object = natural/generic object | environment = no clear subject, scene itself
   Allowed: person | animal | product | object | environment
@@ -90,30 +90,30 @@ lighting — dominant light source and quality visible in the image.
 
 mood — emotional atmosphere. ONLY assign if CLEARLY AND STRONGLY present. Default = EMPTY.
   If unsure → leave EMPTY.
-  Ethereal & dreamy   = hazy soft glow, floating or weightless feel, overexposed soft tones.
+  Ethereal \& dreamy   = hazy soft glow, floating or weightless feel, overexposed soft tones.
                         DO NOT assign just because the subject is a woman or the light is soft.
-  Moody & atmospheric = heavy shadow dominating the frame, tension, dark oppressive tones
-  Tense & dramatic    = clear conflict, confrontation, or extreme contrast
-  Serene & peaceful   = explicitly calm, open space, gentle soft light, relaxed expression
+  Moody \& atmospheric = heavy shadow dominating the frame, tension, dark oppressive tones
+  Tense \& dramatic    = clear conflict, confrontation, or extreme contrast
+  Serene \& peaceful   = explicitly calm, open space, gentle soft light, relaxed expression
   Mysterious          = subject obscured, face hidden, fog, enigmatic framing
-  Epic & grand        = vast landscape scale, heroic pose, sweeping sky
+  Epic \& grand        = vast landscape scale, heroic pose, sweeping sky
   Melancholic         = explicitly sad expression, muted desaturated tones, isolation
-  Joyful & vibrant    = clearly bright, high saturation, laughter or energetic expression
-  Gritty & raw        = harsh unfiltered realism, rough texture, street/documentary feel
+  Joyful \& vibrant    = clearly bright, high saturation, laughter or energetic expression
+  Gritty \& raw        = harsh unfiltered realism, rough texture, street/documentary feel
   If the mood is neutral, ordinary, or ambiguous — leave EMPTY.
-  Allowed (exact label): Moody & atmospheric | Ethereal & dreamy | Tense & dramatic |
-    Serene & peaceful | Mysterious | Epic & grand | Melancholic | Joyful & vibrant | Gritty & raw
+  Allowed (exact label): Moody \& atmospheric | Ethereal \& dreamy | Tense \& dramatic |
+    Serene \& peaceful | Mysterious | Epic \& grand | Melancholic | Joyful \& vibrant | Gritty \& raw
 
-mood — ONLY if CLEARLY present, else EMPTY.
+genre — stylistic/thematic genre. ONLY assign if UNMISTAKABLY present.
   If unsure → leave EMPTY.
   Contemporary portrait, street photo, or nature photo = EMPTY.
   Do NOT assign Historical unless clothing/architecture is clearly pre-1950s period.
   Do NOT assign Fantasy/Sci-Fi/Mythological unless fantastical elements are literally visible.
-  CRITICAL: if style is anime | manga | illustration | digital_art | concept_art → genre EMPTY
+  CRITICAL: if style is anime | manga | illustration | digital\_art | concept\_art → genre EMPTY
   Allowed (exact label): Cyberpunk | Fantasy | Dark Fantasy | Sci-Fi | Solarpunk | Noir |
     Post-Apocalyptic | Historical | Mythological | Surreal | Horror | Futuristic
 
-subject — factual English description of main subject, 40–70 words. What is VISIBLE only."""
+subject — factual English description of the main subject. Only describe what is clearly visible.
   Do NOT describe lighting, style, mood, or atmosphere — these are separate fields.
   Do NOT infer materials, textures, or details not clearly visible.
   Word count by subjectType:
@@ -133,8 +133,7 @@ Always assign lighting — choose the closest matching label, never leave empty.
 If image is black and white or grayscale → style=monochrome.
 Leave mood EMPTY unless the atmosphere is unmistakable.
 Leave genre EMPTY for realistic photos, anime/illustration styles, and nature/portrait shots.
-scene must reflect camera framing of subject, not background type.
-```
+scene must reflect camera framing of subject, not background type."""
 
 def _extract_vision_tag(text: str, tag: str) -> str:
     # (?=[>\s]) — після назви тегу має йти > або пробіл
