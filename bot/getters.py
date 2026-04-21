@@ -89,7 +89,6 @@ async def style_getter(dialog_manager: DialogManager, **kwargs) -> dict:
 # ─── LIGHTING ─────────────────────────────────────────────────────────────────
 
 async def lighting_getter(dialog_manager: DialogManager, **kwargs) -> dict:
-    # Exclude empty key "" — handled as separate "none" button
     lightings = [
         {"id": k, "label": v["label"]}
         for k, v in LIGHTINGS.items()
@@ -134,6 +133,23 @@ async def genre_getter(dialog_manager: DialogManager, **kwargs) -> dict:
 
 # ─── RESULT ───────────────────────────────────────────────────────────────────
 
+# Iteration button labels per language
+_ITER_LABELS = {
+    "ua": {
+        "regen":     "↺ Повтор",
+        "improve":   "↑ Покращити",
+        "realistic": "📷 Реально",
+        "lighting":  "💡 Світло",
+    },
+    "en": {
+        "regen":     "↺ Regen",
+        "improve":   "↑ Improve",
+        "realistic": "📷 Realistic",
+        "lighting":  "💡 Lighting",
+    },
+}
+
+
 async def result_getter(dialog_manager: DialogManager, **kwargs) -> dict:
     data    = dialog_manager.dialog_data
     result  = data.get("result", {})
@@ -145,11 +161,11 @@ async def result_getter(dialog_manager: DialogManager, **kwargs) -> dict:
     mood      = data.get("mood", "")
     genre     = data.get("genre", "")
 
-    scene_label   = SCENES.get(scene_id, {}).get("label", scene_id)
-    style_label   = STYLES.get(style_id, {}).get("label", style_id)
+    scene_label    = SCENES.get(scene_id, {}).get("label", scene_id)
+    style_label    = STYLES.get(style_id, {}).get("label", style_id)
     lighting_label = LIGHTINGS.get(lighting, {}).get("label", "—") if lighting else "—"
-    mood_label    = MOODS.get(mood, {}).get("label", "—") if mood else "—"
-    genre_label   = GENRES.get(genre, {}).get("label", "—") if genre else "—"
+    mood_label     = MOODS.get(mood, {}).get("label", "—") if mood else "—"
+    genre_label    = GENRES.get(genre, {}).get("label", "—") if genre else "—"
 
     params = (
         f"<b>📐</b> {scene_label}  "
@@ -174,11 +190,18 @@ async def result_getter(dialog_manager: DialogManager, **kwargs) -> dict:
         if notes:
             body += f"\n\n💡 {notes}"
 
+    iter_lbl = _ITER_LABELS.get(lang, _ITER_LABELS["en"])
+
     return {
-        "params":      params,
-        "subject":     data.get("subject", ""),
-        "body":        body,
-        "again_label": UI[lang]["again"],
-        "change_label": UI[lang]["change"],
-        "share_label": UI[lang]["share"],
+        "params":           params,
+        "subject":          data.get("subject", ""),
+        "body":             body,
+        "again_label":      UI[lang]["again"],
+        "change_label":     UI[lang]["change"],
+        "share_label":      UI[lang]["share"],
+        # iteration buttons
+        "regen_label":      iter_lbl["regen"],
+        "improve_label":    iter_lbl["improve"],
+        "realistic_label":  iter_lbl["realistic"],
+        "lighting_label":   iter_lbl["lighting"],
     }
