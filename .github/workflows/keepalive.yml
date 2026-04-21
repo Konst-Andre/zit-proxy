@@ -1,0 +1,9 @@
+name: Keep Alive
+on:
+  schedule:
+    - cron: '*/14 * * * *'
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -s https://zit-proxy.onrender.com/health
