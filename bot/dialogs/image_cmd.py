@@ -1,6 +1,6 @@
 """
 ZIT Bot — /image Command Handler
-Flow: /image → subject input → Groq prompt → fal-ai image → photo + caption
+Flow: /image → subject input → Groq prompt → Pollinations image → photo + caption
 
 FSM: ImageFSM.subject (один стан — чекаємо тему)
 """
@@ -32,15 +32,48 @@ def _is_ready_prompt(text: str) -> bool:
     """
     Визначає чи текст — вже готовий EN промпт (з /prompt або Mini App),
     чи коротка тема яку треба обробити через Groq.
-
-    Критерії готового промпту:
-    - довжина > 150 символів
-    - >85% ASCII символів (англійський текст)
+    Критерії: довжина > 150 символів + >85% ASCII
     """
     if len(text) <= 150:
         return False
     ascii_ratio = sum(1 for c in text if c.isascii()) / len(text)
     return ascii_ratio > 0.85
+
+
+def _detect_scene(subject: str) -> str:
+    """Detect scene type from subject keywords."""
+    s = subject.lower()
+    if any(w in s for w in [
+        "landscape", "пейзаж", "ліс", "forest", "гори", "mountain",
+        "море", "ocean", "sea", "місто", "city", "вулиця", "поле",
+        "field", "річка", "river", "озеро", "lake", "природа", "nature",
+    ]):
+        return "landscape"
+    if any(w in s for w in [
+        "full body", "на повний зріст", "стоїть", "standing",
+        "іде", "йде", "walking", "running", "біжить", "танцює", "dancing",
+    ]):
+        return "full_body"
+    if any(w in s for w in [
+        "interior", "кімната", "room", "cafe", "кафе",
+        "office", "офіс", "library", "бібліотека", "kitchen", "кухня",
+    ]):
+        return "interior"
+    if any(w in s for w in [
+        "animal", "тварина", "кіт", "cat", "пес", "dog",
+        "кінь", "horse", "вовк", "wolf", "птах", "bird",
+    ]):
+        return "animal"
+    if any(w in s for w in [
+        "urban", "alley", "провулок", "downtown", "subway", "метро",
+    ]):
+        return "urban"
+    if any(w in s for w in [
+        "product", "продукт", "watch", "годинник", "perfume", "парфум",
+        "bottle", "пляшка",
+    ]):
+        return "product"
+    return "portrait"
 
 
 # ─── /image ENTRY ────────────────────────────────────────────────────────────
@@ -74,18 +107,23 @@ async def cmd_image(message: Message, state: FSMContext) -> None:
 async def on_subject(message: Message, state: FSMContext) -> None:
     subject = message.text.strip() if message.text else ""
     if not subject:
-        await message.answer("⚠️ Введи текстову тему" if (await state.get_data()).get("lang") == "ua" else "⚠️ Please enter a text subject")
+        data = await state.get_data()
+        lang = data.get("lang", "ua")
+        await message.answer(
+            "⚠️ Введи текстову тему" if lang == "ua"
+            else "⚠️ Please enter a text subject"
+        )
         return
 
     data = await state.get_data()
     lang = data.get("lang", "ua")
-
-    # Очищаємо стан одразу — юзер може стартувати нову команду
     await state.clear()
 
-    # ── Step 1: prompt generation або bypass ──────────────────────────────
+    # Визначаємо scene по темі
+    scene = _detect_scene(subject)
+
+    # ── Step 1: prompt generation або bypass ─────────────────────────────
     if _is_ready_prompt(subject):
-        # Готовий EN промпт (скопійований з /prompt або Mini App) — пропускаємо Groq
         logger.info("Detected ready prompt — skipping Groq")
         positive = subject
         negative = ""
@@ -94,13 +132,12 @@ async def on_subject(message: Message, state: FSMContext) -> None:
             "🎨 Генерую зображення…" if lang == "ua" else "🎨 Generating image…"
         )
     else:
-        # Коротка тема / UA текст — генеруємо промпт через Groq
         wait_msg = await message.answer(
             "⏳ Генерую промпт…" if lang == "ua" else "⏳ Generating prompt…"
         )
         state_for_groq = {
             "subject":      subject,
-            "scene":        "portrait",
+            "scene":        scene,
             "style":        "photorealistic",
             "lighting":     "Cinematic",
             "mood":         "",
@@ -121,15 +158,14 @@ async def on_subject(message: Message, state: FSMContext) -> None:
         negative = prompt_result.get("negative", "")
         notes    = prompt_result.get("notes", "")
 
-    # ── Step 2: image generation ───────────────────────────────────────────
+    # ── Step 2: image generation ──────────────────────────────────────────
     if not _is_ready_prompt(subject):
-        # Оновлюємо повідомлення тільки якщо до цього показували "Генерую промпт"
         await wait_msg.edit_text(
             "🎨 Генерую зображення…" if lang == "ua" else "🎨 Generating image…"
         )
 
     try:
-        image_bytes = await generate_image(positive)
+        image_bytes = await generate_image(positive, scene=scene)
     except Exception as e:
         logger.exception("generate_image failed in /image")
         await wait_msg.edit_text(
@@ -138,7 +174,7 @@ async def on_subject(message: Message, state: FSMContext) -> None:
         )
         return
 
-    # ── Step 3: send result ────────────────────────────────────────────────
+    # ── Step 3: send result ───────────────────────────────────────────────
     await wait_msg.delete()
 
     caption = (
@@ -151,7 +187,6 @@ async def on_subject(message: Message, state: FSMContext) -> None:
     if notes:
         caption += f"\n\n💡 {notes}"
 
-    # Telegram caption limit — 1024 символи
     if len(caption) > 1024:
         caption = caption[:1020] + "…"
 
