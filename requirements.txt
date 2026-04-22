@@ -5,3 +5,4 @@ aiogram==3.27.0
 aiogram-dialog==2.6.0
 python-dotenv==1.0.0
 huggingface_hub[inference]>=0.31.0
+Pillow>=10.0.0
