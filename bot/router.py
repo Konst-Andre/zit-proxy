@@ -15,6 +15,7 @@ from bot.states import ZitFSM
 from bot.dialogs.prompt import prompt_dialog
 from bot.dialogs.random import router as random_router
 from bot.dialogs.vision import router as vision_router
+from bot.dialogs.image_cmd import router as image_router
 from bot.handlers import router as static_router
 from bot.inline import router as inline_router
 
@@ -50,6 +51,7 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(static_router)
     dp.include_router(random_router)
     dp.include_router(vision_router)
+    dp.include_router(image_router)        # ← /image
     dp.include_router(inline_router)       # ← inline
     dp.include_router(prompt_entry_router)
 

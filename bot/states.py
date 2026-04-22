@@ -4,7 +4,7 @@ from aiogram.fsm.state import State, StatesGroup
 class ZitFSM(StatesGroup):
     subject      = State()
     scene        = State()
-    subject_type = State()   # між scene і style_group
+    subject_type = State()
     style_group  = State()
     style        = State()
     lighting     = State()
@@ -14,5 +14,9 @@ class ZitFSM(StatesGroup):
 
 
 class VisionFSM(StatesGroup):
-    photo   = State()   # чекаємо фото
-    confirm = State()   # показуємо розпізнані параметри → підтвердити або змінити
+    photo   = State()
+    confirm = State()
+
+
+class ImageFSM(StatesGroup):
+    subject = State()   # чекаємо тему від юзера
