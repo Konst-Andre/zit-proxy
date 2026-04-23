@@ -192,7 +192,10 @@ async def cb_new(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     lang = data.get("lang", "ua")
     await state.set_state(ImageFSM.subject)
-    await callback.answer()
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     await callback.message.answer(
         "🖼 Введи нову тему:" if lang == "ua" else "🖼 Enter new subject:"
     )
@@ -206,7 +209,12 @@ async def cb_regen(callback: CallbackQuery, state: FSMContext) -> None:
     subject  = data.get("subject", "")
     scene    = data.get("scene", "portrait")
 
-    await callback.answer()
+    # callback.answer() може впасти якщо query протухла (>60с) — ігноруємо
+    try:
+        await callback.answer()
+    except Exception:
+        pass
+
     await _generate_and_send(callback.message, state, subject, scene, lang)
 
 
