@@ -1,11 +1,11 @@
 """
 ZIT Bot — /image Command Handler
-Flow: /image → subject → Groq (якщо потрібно) → image → photo + кнопки
+Flow: /image → subject → Groq → Pollinations → photo + buttons
 
 FSM: ImageFSM.subject → ImageFSM.result
-Кнопки після результату:
-  [ 🔄 Нова тема ] [ ↺ Повтор ]
-  [   📋 Копіювати промпт     ]
+Buttons:
+  Row 1: [🔄 Нова тема] [↺ Повтор]
+  Row 2: [📋 Копіювати промпт]
 """
 
 import os
@@ -15,8 +15,8 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    Message, BufferedInputFile,
-    CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
+    Message, BufferedInputFile, CallbackQuery,
+    InlineKeyboardMarkup, InlineKeyboardButton,
 )
 
 from bot.states import ImageFSM
@@ -28,13 +28,14 @@ router = Router(name="image_cmd")
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
-_CB_NEW   = "img:new"
-_CB_REGEN = "img:regen"
-_CB_COPY  = "img:copy"
-
 
 def _detect_lang(message: Message) -> str:
     lc = (message.from_user.language_code or "").lower()
+    return "ua" if lc.startswith("uk") else "en"
+
+
+def _detect_lang_cb(callback: CallbackQuery) -> str:
+    lc = (callback.from_user.language_code or "").lower()
     return "ua" if lc.startswith("uk") else "en"
 
 
@@ -44,45 +45,43 @@ def _is_ready_prompt(text: str) -> bool:
     return sum(1 for c in text if c.isascii()) / len(text) > 0.85
 
 
+def _detect_scene(subject: str) -> str:
+    s = subject.lower()
+    if any(w in s for w in ["landscape", "пейзаж", "ліс", "forest", "гори", "mountain", "море", "ocean", "sea", "місто", "city", "вулиця", "поле", "field", "річка", "озеро", "природа", "nature"]):
+        return "landscape"
+    if any(w in s for w in ["full body", "на повний зріст", "стоїть", "standing", "іде", "йде", "walking", "running", "біжить", "танцює", "dancing"]):
+        return "full_body"
+    if any(w in s for w in ["interior", "кімната", "room", "cafe", "кафе", "office", "офіс", "library", "бібліотека", "kitchen", "кухня"]):
+        return "interior"
+    if any(w in s for w in ["animal", "тварина", "кіт", "cat", "пес", "dog", "кінь", "horse", "вовк", "wolf", "птах", "bird"]):
+        return "animal"
+    if any(w in s for w in ["urban", "alley", "провулок", "downtown", "subway", "метро"]):
+        return "urban"
+    if any(w in s for w in ["product", "продукт", "watch", "годинник", "perfume", "парфум", "bottle", "пляшка"]):
+        return "product"
+    return "portrait"
+
+
 def _result_keyboard(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(
-                text="🔄 Нова тема" if lang == "ua" else "🔄 New topic",
-                callback_data=_CB_NEW,
-            ),
-            InlineKeyboardButton(
-                text="↺ Повтор" if lang == "ua" else "↺ Repeat",
-                callback_data=_CB_REGEN,
-            ),
+            InlineKeyboardButton(text="🔄 Нова тема" if lang == "ua" else "🔄 New topic", callback_data="img:new"),
+            InlineKeyboardButton(text="↺ Повтор"    if lang == "ua" else "↺ Repeat",    callback_data="img:regen"),
         ],
         [
-            InlineKeyboardButton(
-                text="📋 Копіювати промпт" if lang == "ua" else "📋 Copy prompt",
-                callback_data=_CB_COPY,
-            ),
+            InlineKeyboardButton(text="📋 Копіювати промпт" if lang == "ua" else "📋 Copy prompt", callback_data="img:copy"),
         ],
     ])
 
 
-# ─── CORE LOGIC ───────────────────────────────────────────────────────────────
+async def _run_image(message: Message, subject: str, lang: str, state: FSMContext) -> None:
+    """Core pipeline: subject → Groq → Pollinations → photo + buttons."""
+    scene = _detect_scene(subject)
 
-async def _generate_and_send(
-    message: Message,
-    state: FSMContext,
-    subject: str,
-    scene: str,
-    lang: str,
-) -> None:
-    """
-    Генерація + відправка результату + збереження стану для кнопок.
-    Викликається з on_subject і cb_regen.
-    """
-    # ── Step 1 ────────────────────────────────────────────────────────────
+    # ── Step 1: prompt ────────────────────────────────────────────────────
     if _is_ready_prompt(subject):
-        logger.info("Ready prompt detected — skipping Groq")
-        positive = subject
-        negative = ""
+        logger.info("Detected ready prompt — skipping Groq")
+        positive, negative, notes = subject, "", ""
         wait_msg = await message.answer(
             "🎨 Генерую зображення…" if lang == "ua" else "🎨 Generating image…"
         )
@@ -97,23 +96,24 @@ async def _generate_and_send(
                 "mood": "", "genre": "", "subject_type": "none", "lang": lang,
             }, GROQ_API_KEY)
         except Exception as e:
-            logger.exception("groq_generate failed")
+            logger.exception("groq_generate failed in /image")
             await wait_msg.edit_text(
-                f"❌ Помилка промпту: {str(e)[:120]}" if lang == "ua"
-                else f"❌ Prompt error: {str(e)[:120]}"
+                f"❌ Помилка генерації промпту: {str(e)[:120]}" if lang == "ua"
+                else f"❌ Prompt generation error: {str(e)[:120]}"
             )
             return
         positive = result.get("positive", "")
         negative = result.get("negative", "")
+        notes    = result.get("notes", "")
         await wait_msg.edit_text(
             "🎨 Генерую зображення…" if lang == "ua" else "🎨 Generating image…"
         )
 
-    # ── Step 2 ────────────────────────────────────────────────────────────
+    # ── Step 2: image ─────────────────────────────────────────────────────
     try:
         image_bytes = await generate_image(positive, scene=scene)
     except Exception as e:
-        logger.exception("generate_image failed")
+        logger.exception("generate_image failed in /image")
         await wait_msg.edit_text(
             f"❌ Помилка зображення: {str(e)[:120]}" if lang == "ua"
             else f"❌ Image error: {str(e)[:120]}"
@@ -122,18 +122,17 @@ async def _generate_and_send(
 
     await wait_msg.delete()
 
-    # ── Step 3 — зберігаємо + відправляємо ───────────────────────────────
+    # ── Step 3: зберегти стан + відправити ───────────────────────────────
     await state.set_state(ImageFSM.result)
-    await state.update_data(
-        subject=subject, positive=positive,
-        negative=negative, scene=scene, lang=lang,
-    )
+    await state.update_data(subject=subject, positive=positive, scene=scene, lang=lang)
 
     caption = (
         f"🎯 <b>{subject}</b>\n\n"
         f"✦ <b>POSITIVE</b>\n<code>{positive}</code>\n\n"
         f"✦ <b>NEGATIVE</b>\n<code>{negative}</code>"
     )
+    if notes:
+        caption += f"\n\n💡 {notes}"
     if len(caption) > 1024:
         caption = caption[:1020] + "…"
 
@@ -152,17 +151,10 @@ async def cmd_image(message: Message, state: FSMContext) -> None:
     lang = _detect_lang(message)
     await state.set_state(ImageFSM.subject)
     await state.update_data(lang=lang)
-
     await message.answer(
-        "🖼 <b>Зображення за темою</b>\n\n"
-        "Введи тему або готовий EN промпт.\n"
-        "Можна українською — переведу автоматично.\n\n"
-        "<i>Наприклад: дівчина під дощем у Токіо</i>"
+        "🖼 <b>Зображення за темою</b>\n\nВведи тему — опиши що намалювати.\nМожна українською — переведу автоматично.\n\n<i>Наприклад: дівчина під дощем у Токіо</i>"
         if lang == "ua" else
-        "🖼 <b>Image from subject</b>\n\n"
-        "Enter a subject or a ready EN prompt.\n"
-        "Any language works — I'll translate.\n\n"
-        "<i>Example: girl in the rain in Tokyo</i>"
+        "🖼 <b>Image from subject</b>\n\nEnter a subject — describe what to generate.\nAny language works.\n\n<i>Example: girl in the rain in Tokyo</i>"
     )
 
 
@@ -173,63 +165,59 @@ async def on_subject(message: Message, state: FSMContext) -> None:
     subject = message.text.strip() if message.text else ""
     data = await state.get_data()
     lang = data.get("lang", "ua")
-
     if not subject:
-        await message.answer(
-            "⚠️ Введи текстову тему" if lang == "ua"
-            else "⚠️ Please enter a text subject"
-        )
+        await message.answer("⚠️ Введи текстову тему" if lang == "ua" else "⚠️ Please enter a text subject")
         return
+    await _run_image(message, subject, lang, state)
 
-    await _generate_and_send(message, state, subject, "portrait", lang)
 
+# ─── CALLBACKS ───────────────────────────────────────────────────────────────
 
-# ─── RESULT CALLBACKS ────────────────────────────────────────────────────────
-
-@router.callback_query(ImageFSM.result, F.data == _CB_NEW)
-async def cb_new(callback: CallbackQuery, state: FSMContext) -> None:
-    """Повний reset — просимо нову тему."""
-    data = await state.get_data()
-    lang = data.get("lang", "ua")
+@router.callback_query(F.data == "img:new")
+async def cb_img_new(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = _detect_lang_cb(callback)
     await state.set_state(ImageFSM.subject)
+    await state.update_data(lang=lang)
     try:
         await callback.answer()
     except Exception:
         pass
     await callback.message.answer(
-        "🖼 Введи нову тему:" if lang == "ua" else "🖼 Enter new subject:"
+        "🖼 Введи нову тему:" if lang == "ua" else "🖼 Enter a new subject:"
     )
 
 
-@router.callback_query(ImageFSM.result, F.data == _CB_REGEN)
-async def cb_regen(callback: CallbackQuery, state: FSMContext) -> None:
-    """Той самий промпт → новий запит до image генератора."""
-    data = await state.get_data()
-    lang     = data.get("lang", "ua")
-    subject  = data.get("subject", "")
-    scene    = data.get("scene", "portrait")
-
-    # callback.answer() може впасти якщо query протухла (>60с) — ігноруємо
+@router.callback_query(F.data == "img:regen")
+async def cb_img_regen(callback: CallbackQuery, state: FSMContext) -> None:
+    data    = await state.get_data()
+    subject = data.get("subject", "")
+    lang    = data.get("lang", "ua")
     try:
         await callback.answer()
     except Exception:
         pass
+    if not subject:
+        await callback.message.answer("Немає теми для повтору" if lang == "ua" else "No subject to repeat")
+        return
+    await _run_image(callback.message, subject, lang, state)
 
-    await _generate_and_send(callback.message, state, subject, scene, lang)
 
-
-@router.callback_query(ImageFSM.result, F.data == _CB_COPY)
-async def cb_copy(callback: CallbackQuery, state: FSMContext) -> None:
-    """Відправляє positive як окреме повідомлення — юзер може скопіювати."""
+@router.callback_query(F.data == "img:copy")
+async def cb_img_copy(callback: CallbackQuery, state: FSMContext) -> None:
     data     = await state.get_data()
-    lang     = data.get("lang", "ua")
     positive = data.get("positive", "")
-
-    await callback.answer(
-        "Промпт надіслано ↓" if lang == "ua" else "Prompt sent ↓",
-        show_alert=False,
-    )
+    lang     = data.get("lang", "ua")
+    if not positive:
+        try:
+            await callback.answer("Промпт недоступний" if lang == "ua" else "Prompt not available")
+        except Exception:
+            pass
+        return
     await callback.message.answer(
-        f"<code>{positive}</code>",
+        f"📋 <b>Positive prompt:</b>\n\n<code>{positive}</code>",
         parse_mode="HTML",
     )
+    try:
+        await callback.answer("✓" )
+    except Exception:
+        pass
