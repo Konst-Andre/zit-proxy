@@ -20,3 +20,4 @@ class VisionFSM(StatesGroup):
 
 class ImageFSM(StatesGroup):
     subject = State()   # чекаємо тему від юзера
+    result  = State()   # показуємо результат з кнопками
