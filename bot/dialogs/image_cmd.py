@@ -57,6 +57,14 @@ def _detect_scene(subject: str) -> str:
         return "animal"
     if any(w in s for w in ["urban", "alley", "провулок", "downtown", "subway", "метро"]):
         return "urban"
+    # Food/їжа → product (запобігає "portrait of ice cream" → Flux обличчя)
+    if any(w in s for w in [
+        "морозиво", "ice cream", "торт", "cake", "піца", "pizza",
+        "кава", "coffee", "їжа", "food", "напій", "drink", "juice", "сік",
+        "бургер", "burger", "суші", "sushi", "десерт", "dessert",
+        "шоколад", "chocolate", "печиво", "cookie", "хліб", "bread",
+    ]):
+        return "product"
     if any(w in s for w in ["product", "продукт", "watch", "годинник", "perfume", "парфум", "bottle", "пляшка"]):
         return "product"
     return "portrait"
