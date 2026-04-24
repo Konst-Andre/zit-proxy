@@ -18,6 +18,7 @@ from bot.dialogs.vision import router as vision_router
 from bot.dialogs.image_cmd import router as image_router
 from bot.handlers import router as static_router
 from bot.inline import router as inline_router
+from bot.middleware import ColdStartMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,9 @@ async def cmd_prompt(message: Message, dialog_manager: DialogManager) -> None:
 
 def create_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
+
+    # Cold start warning — перехоплює всі повідомлення
+    dp.message.middleware(ColdStartMiddleware())
 
     # Register routers (order matters — dialogs must be registered via setup_dialogs)
     dp.include_router(static_router)
