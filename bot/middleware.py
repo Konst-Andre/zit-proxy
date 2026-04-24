@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # KeepAlive пінгує кожні 14 хв — але між пінгами може бути gap
 COLD_START_THRESHOLD = 14 * 60  # секунд
 
-_last_request_time: float = time.monotonic()
+_last_request_time: float = 0.0  # 0 = після рестарту перший запит завжди показує warning
 
 
 class ColdStartMiddleware(BaseMiddleware):
