@@ -56,16 +56,16 @@ class ColdStartMiddleware(BaseMiddleware):
             try:
                 if lang == "ua":
                     await event.answer(
-                        "⏳ <b>Перший запит після паузи</b>\n\n"
-                        "Сервер прокидається — зачекай 15–20 секунд.\n"
-                        "Наступні запити будуть швидкими.",
+                        "⚡️ <b>Дякуємо за очікування!</b>\n\n"
+                        "Сервіс щойно запустився після паузи, тому перший запит був трохи довшим.\n"
+                        "Тепер усе працює швидко.",
                         parse_mode="HTML",
                     )
                 else:
                     await event.answer(
-                        "⏳ <b>First request after idle</b>\n\n"
-                        "Server is waking up — please wait 15–20 seconds.\n"
-                        "Next requests will be fast.",
+                        "⚡️ <b>Thanks for waiting!</b>\n\n"
+                        "The service just started after a pause, so the first request took a bit longer.\n"
+                        "Everything is running fast now.",
                         parse_mode="HTML",
                     )
             except Exception:
