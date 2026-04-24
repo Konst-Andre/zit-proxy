@@ -19,5 +19,6 @@ class VisionFSM(StatesGroup):
 
 
 class ImageFSM(StatesGroup):
-    subject = State()   # чекаємо тему від юзера
-    result  = State()   # показуємо результат з кнопками
+    subject = State()   # крок 1 — тема
+    scene   = State()   # крок 2 — вибір сцени
+    result  = State()   # результат + кнопки
