@@ -191,15 +191,18 @@ async def _run_image(
         negative=negative, scene=scene, lang=lang,
     )
 
+    # Обрізаємо plain text ДО побудови HTML — щоб не розрізати теги
+    subject_safe  = subject[:80]
+    positive_safe = positive[:700]   # залишає місце для negative + оформлення
+    negative_safe = negative[:200]
+
     caption = (
-        f"🎯 <b>{subject}</b>\n\n"
-        f"✦ <b>POSITIVE</b>\n<code>{positive}</code>\n\n"
-        f"✦ <b>NEGATIVE</b>\n<code>{negative}</code>"
+        f"🎯 <b>{subject_safe}</b>\n\n"
+        f"✦ <b>POSITIVE</b>\n<code>{positive_safe}</code>\n\n"
+        f"✦ <b>NEGATIVE</b>\n<code>{negative_safe}</code>"
     )
     if notes:
-        caption += f"\n\n💡 {notes}"
-    if len(caption) > 1024:
-        caption = caption[:1020] + "…"
+        caption += f"\n\n💡 {notes[:150]}"
 
     await message.answer_photo(
         photo=BufferedInputFile(image_bytes, filename="image.png"),
