@@ -18,6 +18,7 @@ from bot.dialogs.vision import router as vision_router
 from bot.dialogs.image_cmd import router as image_router
 from bot.handlers import router as static_router
 from bot.inline import router as inline_router
+from bot.dialogs.chat_cmd import router as chat_router
 from bot.middleware import ColdStartMiddleware
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(random_router)
     dp.include_router(vision_router)
     dp.include_router(image_router)        # ← /image
+    dp.include_router(chat_router)         # ← /chat agent
     dp.include_router(inline_router)       # ← inline
     dp.include_router(prompt_entry_router)
 

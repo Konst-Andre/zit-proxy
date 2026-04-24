@@ -19,6 +19,10 @@ class VisionFSM(StatesGroup):
 
 
 class ImageFSM(StatesGroup):
-    subject = State()   # крок 1 — тема
-    scene   = State()   # крок 2 — вибір сцени
-    result  = State()   # результат + кнопки
+    subject = State()
+    scene   = State()
+    result  = State()
+
+
+class ChatFSM(StatesGroup):
+    active = State()   # активна сесія чату
