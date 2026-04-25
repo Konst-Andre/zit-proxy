@@ -16,7 +16,7 @@ import time
 from datetime import datetime
 
 import httpx
-from aiogram import Router, F
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
@@ -88,8 +88,10 @@ def _redis_key(user_id: int) -> str:
 
 def _strip_think(text: str) -> str:
     """Remove Qwen3 <think>...</think> blocks from response."""
+    # Закриті блоки — видаляємо повністю
     text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"<think>[\s\S]*", "", text, flags=re.IGNORECASE)  # unclosed
+    # Незакриті — видаляємо тільки тег і наступні 2000 символів (не все)
+    text = re.sub(r"<think>[^\n]{0,2000}", "", text, flags=re.IGNORECASE)
     return text.strip()
 
 
@@ -205,11 +207,8 @@ async def groq_chat(messages: list[dict]) -> str:
 
         messages_with_tool = messages + [
             msg,
-            {
-                "role": "tool",
-                "tool_call_id": tool_call["id"],
-                "content": search_result + "\n\n/no_think",
-            },
+            {"role": "tool", "tool_call_id": tool_call["id"], "content": search_result},
+            {"role": "user", "content": "Summarize the search results above. /no_think"},
         ]
         async with httpx.AsyncClient(timeout=45.0) as client:
             r2 = await client.post(
@@ -307,6 +306,16 @@ async def cmd_stop(message: Message, state: FSMContext) -> None:
 @router.message(Command("search"))
 async def cmd_search(message: Message, state: FSMContext) -> None:
     lang  = _detect_lang(message)
+
+    # Не перериваємо інші FSM flow (image, prompt, vision)
+    current = await state.get_state()
+    if current and current != ChatFSM.active and not current.startswith("Chat"):
+        await message.answer(
+            "⚠️ Завершти поточну команду перед пошуком." if lang == "ua"
+            else "⚠️ Finish the current command before searching."
+        )
+        return
+
     query = (message.text or "").replace("/search", "", 1).strip()
 
     if not query:
