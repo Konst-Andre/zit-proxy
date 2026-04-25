@@ -18,8 +18,8 @@ UI = {
             "🔍 /search — пошук в інтернеті\n"
             "❓ /help — довідка\n"
             "👋 /stop — завершити чат з AI асистентом\n\n"
+            "💡 Працює і в інших чатах: @username запит\n\n"
             "Працюй через команди або відкрий повний генератор:"
-            "💡 Працює і в інших чатах: @username запит"
      ),
         "help": (
             "📖 <b>LLM Prompt Generator — Довідка</b>\n\n"
@@ -70,8 +70,8 @@ UI = {
             "🔍 /search — web search\n"
             "❓ /help — guide\n"
             "👋 /stop — end chat with AI assistant\n\n"
+            "💡 Use in any chat: @username query\n\n"
             "Use commands or open the full generator:"
-            "💡 Use in any chat: @username query"
         ),
         "help": (
     "📖 <b>LLM Prompt Generator — Guide</b>\n\n"
