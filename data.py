@@ -71,15 +71,24 @@ UI = {
             "Use commands or open the full generator:"
         ),
         "help": (
-            "📖 <b>LLM Prompt Generator — Guide</b>\n\n"
-            "<b>Commands:</b>\n"
-            "• /prompt — interactive generator (scene, style, lighting, mood, genre)\n"
-            "• /random — random subject + parameters → instant generation\n"
-            "• /help — this guide\n\n"
-            "<b>Model:</b> qwen/qwen3-32b via Groq API\n"
-            "<b>Architecture:</b> Lumina2 / ZIT (CFG 1.5, Steps 12)\n\n"
-            "For advanced settings — open the full generator:"
-        ),
+    "📖 <b>LLM Prompt Generator — Guide</b>\n\n"
+    "<b>Commands:</b>\n"
+    "📝 /prompt — generate a prompt with parameters\n"
+    "🎲 /random — random prompt\n"
+    "🖼 /image — generate an image\n"
+    "🤖 /chat — AI assistant\n"
+    "🔍 /search — web search\n"
+    "❓ /help — this guide\n"
+    "👋 /stop — end chat with AI assistant\n\n"
+    "<b>How to use:</b>\n"
+    "• /prompt — when you need full control (scene, style, lighting, mood)\n"
+    "• /random — when you need an idea or quick result\n"
+    "• /image — to generate an image from a topic\n"
+    "• /chat — for questions, text tasks, or assistance\n"
+    "• /search — to find up-to-date information online\n"
+    "• /stop — to exit AI assistant mode\n\n"
+    "For advanced settings open the full generator:"
+),
         "subject_prompt": "✍️ <b>Enter subject</b>\n\nDescribe what to generate. Any language — LLM will translate.",
         "scene_prompt": "🎬 <b>Scene</b>\n\nSelect framing type:",
         "style_group_prompt": "🎨 <b>Style — group</b>\n\nSelect style category:",
