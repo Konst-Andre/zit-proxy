@@ -205,7 +205,11 @@ async def groq_chat(messages: list[dict]) -> str:
 
         messages_with_tool = messages + [
             msg,
-            {"role": "tool", "tool_call_id": tool_call["id"], "content": search_result},
+            {
+                "role": "tool",
+                "tool_call_id": tool_call["id"],
+                "content": search_result + "\n\n/no_think",
+            },
         ]
         async with httpx.AsyncClient(timeout=45.0) as client:
             r2 = await client.post(
@@ -215,7 +219,25 @@ async def groq_chat(messages: list[dict]) -> str:
             )
         r2.raise_for_status()
         raw = r2.json()["choices"][0]["message"]["content"] or ""
-        return _strip_think(raw)
+        result = _strip_think(raw)
+        # Якщо після strip порожньо — повторний виклик без tools
+        if not result.strip():
+            logger.warning("Empty reply after strip_think — retrying without tools")
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                r3 = await client.post(
+                    GROQ_URL,
+                    json={
+                        "model": CHAT_MODEL,
+                        "messages": messages_with_tool,
+                        "max_tokens": 1024,
+                        "temperature": 0.3,
+                    },
+                    headers=headers,
+                )
+            r3.raise_for_status()
+            raw = r3.json()["choices"][0]["message"]["content"] or ""
+            result = _strip_think(raw)
+        return result
 
     raw = msg.get("content", "") or ""
     return _strip_think(raw)
