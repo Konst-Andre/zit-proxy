@@ -1,11 +1,8 @@
 """
-ZIT Bot — /chat Agent Handler
-Fixes v2:
-  - strip <think> blocks from Qwen3 responses
-  - /search works without /chat (standalone)
-  - prompt detection → <code> formatting
-  - safe HTML send (strip markdown asterisks)
-  - SDXL/Flux removed from system prompt
+ZIT Bot — /chat Agent Handler v3
+Tools: web_search, generate_prompt, generate_image, get_weather, get_exchange_rate, summarize_url
+Prompt output → окреме повідомлення з <code> для легкого копіювання
+Image output → окреме повідомлення з фото
 """
 
 import json
@@ -14,12 +11,13 @@ import os
 import re
 import time
 from datetime import datetime
+from urllib.parse import quote
 
 import httpx
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, BufferedInputFile
 
 from bot.states import ChatFSM
 from bot.redis_client import redis_get, redis_set, redis_delete
@@ -45,27 +43,28 @@ You are Prompt Assistant — a smart, helpful AI agent built into the LLM Prompt
 
 Your primary context:
 - This Telegram bot generates structured prompts for AI image generation
-- You know the bot's commands: /prompt (FSM generator), /random, /image (text→image), /vision (photo→prompt), inline mode
-- You help users craft better prompts, explain AI image generation concepts, and answer general questions
+- Commands available: /prompt (FSM generator), /random, /image (text→image), /vision (photo→prompt), inline mode
+- You help users craft better prompts, explain AI image generation concepts, answer any questions
 
-Your capabilities:
-- Answer questions on any topic
-- Search the web for current information when needed (you have a search tool)
-- Summarize conversations and analyze context
-- Help with prompt engineering for AI image generation
-- Act as a general-purpose assistant
+Your tools:
+- web_search: search the internet for current info
+- generate_prompt: create a structured image generation prompt (POSITIVE + NEGATIVE)
+- generate_image: generate an actual image from a prompt
+- get_weather: get current weather for a city
+- get_exchange_rate: get currency exchange rate
+- summarize_url: fetch and summarize a webpage
 
 Behavior rules:
 - Be concise but thorough — Telegram messages have limits
 - Use Ukrainian when user writes in Ukrainian, English otherwise
-- For factual/current questions → use the search tool
-- For creative/generative questions → answer from knowledge
-- Never mention that you're "just an AI" in a dismissive way
-- When generating image prompts → always output them in this exact format:
-  POSITIVE: <prompt text>
-  NEGATIVE: <negative prompt text>
-- Do NOT mention specific model names like SDXL, Flux, Stable Diffusion — just say "AI image generator"
-- Do NOT output <think> tags or reasoning blocks — respond directly
+- For factual/current info → use web_search
+- For image prompt requests → use generate_prompt (NOT plain text)
+- For "draw", "generate image", "намалюй", "зроби зображення" → use generate_image
+- For weather questions → use get_weather
+- For currency/exchange → use get_exchange_rate
+- For URLs → use summarize_url
+- Do NOT mention SDXL, Flux, Stable Diffusion — say "AI image generator"
+- Do NOT output <think> blocks
 
 Current date: {date}
 """
@@ -87,36 +86,14 @@ def _redis_key(user_id: int) -> str:
 # ─── RESPONSE PROCESSING ─────────────────────────────────────────────────────
 
 def _strip_think(text: str) -> str:
-    """Remove Qwen3 <think>...</think> blocks from response."""
-    # Закриті блоки — видаляємо повністю
+    # Закриті блоки
     text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE)
-    # Незакриті — видаляємо тільки тег і наступні 2000 символів (не все)
-    text = re.sub(r"<think>[^\n]{0,2000}", "", text, flags=re.IGNORECASE)
+    # Незакриті — до 3000 символів включно з переносами
+    text = re.sub(r"<think>(?:(?!</think>)[\s\S]){0,3000}", "", text, flags=re.IGNORECASE)
     return text.strip()
 
 
-def _format_reply(text: str) -> str:
-    """
-    Format reply for Telegram plain text (no parse_mode).
-    Detects POSITIVE/NEGATIVE prompt format and wraps in code-style markers.
-    """
-    # Detect prompt format → format nicely
-    if "POSITIVE:" in text and "NEGATIVE:" in text:
-        pos_match = re.search(r"POSITIVE:\s*(.+?)(?=NEGATIVE:|$)", text, re.DOTALL)
-        neg_match = re.search(r"NEGATIVE:\s*(.+?)$", text, re.DOTALL)
-        pos = pos_match.group(1).strip() if pos_match else ""
-        neg = neg_match.group(1).strip() if neg_match else ""
-        return (
-            "✦ POSITIVE\n"
-            f"{pos}\n\n"
-            "✦ NEGATIVE\n"
-            f"{neg}"
-        )
-    return text
-
-
 def _safe_split(text: str, limit: int = 4096) -> list[str]:
-    """Split long text into Telegram-safe chunks."""
     if len(text) <= limit:
         return [text]
     chunks = []
@@ -126,116 +103,340 @@ def _safe_split(text: str, limit: int = 4096) -> list[str]:
     return chunks
 
 
-# ─── TAVILY SEARCH ────────────────────────────────────────────────────────────
+# ─── TOOL IMPLEMENTATIONS ─────────────────────────────────────────────────────
 
 async def tavily_search(query: str) -> str:
     if not TAVILY_API_KEY:
-        return "Search unavailable — TAVILY_API_KEY not set."
+        return "Search unavailable."
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            r = await client.post(
-                TAVILY_URL,
-                json={
-                    "api_key": TAVILY_API_KEY,
-                    "query": query,
-                    "max_results": 4,
-                    "search_depth": "basic",
-                    "include_answer": True,
-                },
-            )
+            r = await client.post(TAVILY_URL, json={
+                "api_key": TAVILY_API_KEY, "query": query,
+                "max_results": 4, "search_depth": "basic", "include_answer": True,
+            })
         data = r.json()
         parts = []
         if data.get("answer"):
             parts.append(f"Summary: {data['answer']}")
         for res in data.get("results", [])[:3]:
-            title   = res.get("title", "")
-            content = res.get("content", "")[:250]
-            url     = res.get("url", "")
-            parts.append(f"• {title}\n  {content}\n  {url}")
+            parts.append(f"• {res.get('title','')}\n  {res.get('content','')[:250]}\n  {res.get('url','')}")
         return "\n\n".join(parts) if parts else "No results found."
     except Exception as e:
-        logger.warning("Tavily error: %s", e)
         return f"Search error: {str(e)[:100]}"
 
 
-# ─── GROQ WITH TOOL USE ───────────────────────────────────────────────────────
+async def tool_generate_prompt(subject: str, style: str = "", scene: str = "portrait") -> dict:
+    """Call groq_generate with simplified state."""
+    from prompts import groq_generate
+    state = {
+        "subject": subject, "scene": scene,
+        "style": style or "photorealistic", "lighting": "Cinematic",
+        "mood": "", "genre": "", "subject_type": "none", "lang": "en",
+    }
+    try:
+        return await groq_generate(state, GROQ_API_KEY)
+    except Exception as e:
+        return {"error": str(e)[:120]}
 
-TOOLS = [{
-    "type": "function",
-    "function": {
-        "name": "web_search",
-        "description": (
-            "Search the web for current information, news, facts, prices, events. "
-            "Use when the user asks about something recent or requiring up-to-date data."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query in English"}
+
+async def tool_generate_image(prompt: str, scene: str = "portrait") -> bytes | None:
+    """Generate image via Pollinations."""
+    from bot.image_gen import generate_image
+    try:
+        return await generate_image(prompt, scene=scene)
+    except Exception as e:
+        logger.warning("tool_generate_image failed: %s", e)
+        return None
+
+
+async def tool_get_weather(city: str) -> str:
+    """Get weather via wttr.in (free, no API key)."""
+    try:
+        city_enc = quote(city)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(
+                f"https://wttr.in/{city_enc}?format=3",
+                headers={"User-Agent": "curl/7.68.0"},
+            )
+        return r.text.strip()
+    except Exception as e:
+        return f"Weather error: {str(e)[:100]}"
+
+
+async def tool_get_exchange_rate(from_cur: str, to_cur: str) -> str:
+    """Get exchange rate via frankfurter.app (free, no API key)."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(
+                f"https://api.frankfurter.app/latest?from={from_cur.upper()}&to={to_cur.upper()}"
+            )
+        data = r.json()
+        rate = data.get("rates", {}).get(to_cur.upper())
+        if rate:
+            return f"1 {from_cur.upper()} = {rate} {to_cur.upper()} (frankfurter.app)"
+        return f"Rate not found for {from_cur}/{to_cur}"
+    except Exception as e:
+        return f"Exchange error: {str(e)[:100]}"
+
+
+async def tool_summarize_url(url: str) -> str:
+    """Fetch URL content and return first 2000 chars for summarization."""
+    try:
+        async with httpx.AsyncClient(
+            timeout=15.0,
+            follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0"},
+        ) as client:
+            r = await client.get(url)
+        # Strip HTML tags roughly
+        text = re.sub(r"<[^>]+>", " ", r.text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text[:2000]
+    except Exception as e:
+        return f"URL fetch error: {str(e)[:100]}"
+
+
+# ─── TOOLS DEFINITION ────────────────────────────────────────────────────────
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for current info, news, facts, prices.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
             },
-            "required": ["query"],
         },
     },
-}]
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_prompt",
+            "description": "Generate a structured AI image prompt (POSITIVE + NEGATIVE). Use when user asks to create/write a prompt for image generation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "Main subject in English"},
+                    "style":   {"type": "string", "description": "Art style (optional)"},
+                    "scene":   {"type": "string", "description": "Scene type: portrait/landscape/product/animal/full_body/concept", "default": "portrait"},
+                },
+                "required": ["subject"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_image",
+            "description": "Generate an actual image. Use when user says 'draw', 'generate image', 'намалюй', 'зроби зображення'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "Image prompt in English"},
+                    "scene":  {"type": "string", "description": "Scene type: portrait/landscape/product/animal/full_body/concept", "default": "portrait"},
+                },
+                "required": ["prompt"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather for a city.",
+            "parameters": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_exchange_rate",
+            "description": "Get currency exchange rate between two currencies.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "from_currency": {"type": "string", "description": "e.g. USD"},
+                    "to_currency":   {"type": "string", "description": "e.g. UAH"},
+                },
+                "required": ["from_currency", "to_currency"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "summarize_url",
+            "description": "Fetch and summarize content from a URL/webpage.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string"}},
+                "required": ["url"],
+            },
+        },
+    },
+]
 
 
-async def groq_chat(messages: list[dict]) -> str:
+# ─── TOOL DISPATCHER ─────────────────────────────────────────────────────────
+
+async def _dispatch_tool(name: str, args: dict) -> tuple[str, dict | None]:
+    """
+    Execute tool by name.
+    Returns (result_text, extra) where extra can contain image_bytes, prompt_data etc.
+    """
+    if name == "web_search":
+        result = await tavily_search(args.get("query", ""))
+        return result, None
+
+    if name == "generate_prompt":
+        data = await tool_generate_prompt(
+            subject=args.get("subject", ""),
+            style=args.get("style", ""),
+            scene=args.get("scene", "portrait"),
+        )
+        if "error" in data:
+            return f"Prompt error: {data['error']}", None
+        result_text = (
+            f"POSITIVE: {data.get('positive','')}\n"
+            f"NEGATIVE: {data.get('negative','')}"
+        )
+        return result_text, {"type": "prompt", "data": data}
+
+    if name == "generate_image":
+        prompt = args.get("prompt", "")
+        scene  = args.get("scene", "portrait")
+        image_bytes = await tool_generate_image(prompt, scene)
+        if image_bytes:
+            return f"Image generated for: {prompt[:60]}", {"type": "image", "bytes": image_bytes, "prompt": prompt}
+        return "Image generation failed — try again.", None
+
+    if name == "get_weather":
+        result = await tool_get_weather(args.get("city", ""))
+        return result, None
+
+    if name == "get_exchange_rate":
+        result = await tool_get_exchange_rate(
+            args.get("from_currency", "USD"),
+            args.get("to_currency", "UAH"),
+        )
+        return result, None
+
+    if name == "summarize_url":
+        content = await tool_summarize_url(args.get("url", ""))
+        return content, None
+
+    return "Unknown tool.", None
+
+
+# ─── GROQ WITH MULTI-TOOL ────────────────────────────────────────────────────
+
+async def groq_chat(messages: list[dict], message: Message | None = None) -> str:
+    """
+    Call Groq with tool use. Handles tool execution and sends side-effects
+    (images, code blocks) directly via message if provided.
+    Returns final text reply.
+    """
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "model": CHAT_MODEL,
-        "messages": messages,
-        "tools": TOOLS,
-        "tool_choice": "auto",
-        "max_tokens": 1024,
-    }
 
     async with httpx.AsyncClient(timeout=45.0) as client:
-        r = await client.post(GROQ_URL, json=payload, headers=headers)
+        r = await client.post(GROQ_URL, json={
+            "model": CHAT_MODEL, "messages": messages,
+            "tools": TOOLS, "tool_choice": "auto", "max_tokens": 1024,
+        }, headers=headers)
     r.raise_for_status()
-    response = r.json()
-    choice   = response["choices"][0]
-    msg      = choice["message"]
 
+    choice = r.json()["choices"][0]
+    msg    = choice["message"]
+
+    # ── Tool calls ────────────────────────────────────────────────────────
     if choice.get("finish_reason") == "tool_calls" and msg.get("tool_calls"):
-        tool_call = msg["tool_calls"][0]
-        func_args = json.loads(tool_call["function"]["arguments"])
-        search_result = await tavily_search(func_args.get("query", ""))
-        logger.info("Tavily search: %s", func_args.get("query"))
+        tool_messages = [msg]
+        extra_results = []
 
-        messages_with_tool = messages + [
-            msg,
-            {"role": "tool", "tool_call_id": tool_call["id"], "content": search_result},
-            {"role": "user", "content": "Summarize the search results above. /no_think"},
-        ]
+        for tool_call in msg["tool_calls"]:
+            name      = tool_call["function"]["name"]
+            args      = json.loads(tool_call["function"]["arguments"])
+            logger.info("Tool call: %s | args: %s", name, args)
+
+            # Оновлюємо індикатор для довгих операцій
+            if message and name == "generate_image":
+                try:
+                    await message.answer("🎨 Генерую зображення…")
+                except Exception:
+                    pass
+
+            result_text, extra = await _dispatch_tool(name, args)
+            tool_messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call["id"],
+                "content": result_text,
+            })
+            if extra:
+                extra_results.append(extra)
+
+        # Side effects — надсилаємо image/prompt ДО фінальної відповіді
+        if message:
+            for extra in extra_results:
+                if extra["type"] == "image":
+                    try:
+                        photo = BufferedInputFile(extra["bytes"], filename="image.png")
+                        await message.answer_photo(
+                            photo=photo,
+                            caption=f"🎨 {extra['prompt'][:200]}",
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to send image: %s", e)
+
+                elif extra["type"] == "prompt":
+                    data = extra["data"]
+                    pos  = data.get("positive", "")
+                    neg  = data.get("negative", "")
+                    # Окреме повідомлення з code блоками для легкого копіювання
+                    try:
+                        await message.answer(
+                            f"📋 <b>POSITIVE</b>\n<code>{pos[:900]}</code>\n\n"
+                            f"📋 <b>NEGATIVE</b>\n<code>{neg[:300]}</code>",
+                            parse_mode="HTML",
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to send prompt block: %s", e)
+
+        # Фінальний виклик — тільки tool results, без дублювання user message
+        final_messages = messages + tool_messages
+        final_messages.append({
+            "role": "user",
+            "content": "Based on the tool results above, give a concise reply to my question. /no_think",
+        })
         async with httpx.AsyncClient(timeout=45.0) as client:
-            r2 = await client.post(
-                GROQ_URL,
-                json={"model": CHAT_MODEL, "messages": messages_with_tool, "max_tokens": 1024},
-                headers=headers,
-            )
+            r2 = await client.post(GROQ_URL, json={
+                "model": CHAT_MODEL, "messages": final_messages, "max_tokens": 512,
+            }, headers=headers)
         r2.raise_for_status()
         raw = r2.json()["choices"][0]["message"]["content"] or ""
         result = _strip_think(raw)
-        # Якщо після strip порожньо — повторний виклик без tools
+
+        # Retry якщо порожньо після strip
         if not result.strip():
-            logger.warning("Empty reply after strip_think — retrying without tools")
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                r3 = await client.post(
-                    GROQ_URL,
-                    json={
-                        "model": CHAT_MODEL,
-                        "messages": messages_with_tool,
-                        "max_tokens": 1024,
-                        "temperature": 0.3,
-                    },
-                    headers=headers,
-                )
+            logger.warning("Empty reply after tool — retrying")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r3 = await client.post(GROQ_URL, json={
+                    "model": CHAT_MODEL, "messages": final_messages,
+                    "max_tokens": 512, "temperature": 0.3,
+                }, headers=headers)
             r3.raise_for_status()
             raw = r3.json()["choices"][0]["message"]["content"] or ""
             result = _strip_think(raw)
+
         return result
 
     raw = msg.get("content", "") or ""
@@ -268,16 +469,26 @@ async def cmd_chat(message: Message, state: FSMContext) -> None:
     await state.update_data(lang=lang, last_ts=time.time())
     await message.answer(
         "🤖 Prompt Assistant\n\n"
-        "Привіт! Можу відповідати на питання, шукати актуальну інфо, "
-        "створювати промпти для генерації зображень.\n\n"
+        "Привіт! Можу:\n"
+        "• відповідати на питання\n"
+        "• шукати актуальну інфо в інтернеті\n"
+        "• створювати промпти для зображень\n"
+        "• генерувати зображення\n"
+        "• показати погоду або курс валют\n"
+        "• переказати статтю по URL\n\n"
         "/stop — завершити чат\n"
-        "/search запит — пошук в інтернеті"
+        "/search запит — швидкий пошук"
         if lang == "ua" else
         "🤖 Prompt Assistant\n\n"
-        "Hey! I can answer questions, search for current info, "
-        "and help with image generation prompts.\n\n"
+        "Hey! I can:\n"
+        "• answer any questions\n"
+        "• search the web for current info\n"
+        "• create image generation prompts\n"
+        "• generate images\n"
+        "• show weather or exchange rates\n"
+        "• summarize articles by URL\n\n"
         "/stop — end chat\n"
-        "/search query — web search"
+        "/search query — quick search"
     )
 
 
@@ -286,8 +497,7 @@ async def cmd_chat(message: Message, state: FSMContext) -> None:
 @router.message(Command("stop"))
 async def cmd_stop(message: Message, state: FSMContext) -> None:
     lang = _detect_lang(message)
-    current = await state.get_state()
-    if current == ChatFSM.active:
+    if await state.get_state() == ChatFSM.active:
         await _clear_history(message.from_user.id)
         await state.clear()
         await message.answer(
@@ -301,15 +511,15 @@ async def cmd_stop(message: Message, state: FSMContext) -> None:
         )
 
 
-# ─── /search — працює і без /chat ────────────────────────────────────────────
+# ─── /search ─────────────────────────────────────────────────────────────────
 
 @router.message(Command("search"))
 async def cmd_search(message: Message, state: FSMContext) -> None:
-    lang  = _detect_lang(message)
-
-    # Не перериваємо інші FSM flow (image, prompt, vision)
+    lang    = _detect_lang(message)
     current = await state.get_state()
-    if current and current != ChatFSM.active and not current.startswith("Chat"):
+
+    # Не перериваємо інші FSM (image, prompt, vision)
+    if current and current != ChatFSM.active and "Chat" not in str(current):
         await message.answer(
             "⚠️ Завершти поточну команду перед пошуком." if lang == "ua"
             else "⚠️ Finish the current command before searching."
@@ -317,7 +527,6 @@ async def cmd_search(message: Message, state: FSMContext) -> None:
         return
 
     query = (message.text or "").replace("/search", "", 1).strip()
-
     if not query:
         await message.answer(
             "Вкажи запит: /search що шукати" if lang == "ua"
@@ -328,13 +537,11 @@ async def cmd_search(message: Message, state: FSMContext) -> None:
     wait = await message.answer("🔍 Шукаю…" if lang == "ua" else "🔍 Searching…")
     result = await tavily_search(query)
     await wait.delete()
-
-    text = f"🔍 {query}\n\n{result}"
-    for chunk in _safe_split(text):
+    for chunk in _safe_split(f"🔍 {query}\n\n{result}"):
         await message.answer(chunk)
 
 
-# ─── MAIN MESSAGE HANDLER ────────────────────────────────────────────────────
+# ─── MAIN HANDLER ────────────────────────────────────────────────────────────
 
 @router.message(ChatFSM.active)
 async def on_chat_message(message: Message, state: FSMContext) -> None:
@@ -346,7 +553,7 @@ async def on_chat_message(message: Message, state: FSMContext) -> None:
     last_ts = data.get("last_ts", time.time())
     user_id = message.from_user.id
 
-    # Авто-скид
+    # Авто-скид після AUTO_RESET_MIN хвилин
     if time.time() - last_ts > AUTO_RESET_MIN * 60:
         await _clear_history(user_id)
         await message.answer(
@@ -365,7 +572,7 @@ async def on_chat_message(message: Message, state: FSMContext) -> None:
     wait = await message.answer("💭")
 
     try:
-        reply = await groq_chat(messages)
+        reply = await groq_chat(messages, message=message)
     except Exception as e:
         logger.exception("groq_chat failed")
         await wait.delete()
@@ -381,6 +588,7 @@ async def on_chat_message(message: Message, state: FSMContext) -> None:
     history.append({"role": "assistant", "content": reply})
     await _save_history(user_id, history)
 
-    formatted = _format_reply(reply)
-    for chunk in _safe_split(formatted):
-        await message.answer(chunk)
+    # Відправляємо фінальну текстову відповідь
+    if reply.strip():
+        for chunk in _safe_split(reply):
+            await message.answer(chunk)
