@@ -39,6 +39,7 @@ UI = {
             "• /search — коли потрібна актуальна інформація з інтернету\n"
             "• /stop — щоб завершити чат з AI асистентом\n\n"
             "Для розширених налаштувань відкрий повний генератор:"
+            💡 Працює і в інших чатах: @username cat cinematic
 ),
         "subject_prompt": "✍️ <b>Введи тему</b>\n\nОпиши що зобразити. Можна українською — LLM перекладе автоматично.",
         "scene_prompt": "🎬 <b>Сцена</b>\n\nОбери тип кадрування:",
@@ -90,6 +91,7 @@ UI = {
     "• /search — to find up-to-date information online\n"
     "• /stop — to exit AI assistant mode\n\n"
     "For advanced settings open the full generator:"
+    "💡 Works in any chat: @username cat cinematic"
 ),
         "subject_prompt": "✍️ <b>Enter subject</b>\n\nDescribe what to generate. Any language — LLM will translate.",
         "scene_prompt": "🎬 <b>Scene</b>\n\nSelect framing type:",
