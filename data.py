@@ -9,23 +9,36 @@ UI = {
     "ua": {
         "welcome": (
             "👋 Привіт, <b>{name}</b>!\n\n"
-            "Я <b>LLM Prompt Generator</b> — генерую структуровані промпти для AI-зображень.\n\n"
+            "Я <b>LLM Prompt Generator</b> — генерую структуровані промпти та виконую AI-запити.\n\n"
             "<b>Команди:</b>\n"
-            "🎨 /prompt — генератор з параметрами\n"
+            "📝 /prompt — згенерувати промпт\n"
             "🎲 /random — рандомний промпт\n"
-            "❓ /help — довідка\n\n"
-            "Або відкрий повний генератор:"
-        ),
+            "🖼 /image — зображення за темою\n"
+            "🤖 /chat — AI асистент\n"
+            "🔍 /search — пошук в інтернеті\n"
+            "❓ /help — довідка\n"
+            "👋 /stop — завершити чат з AI асистентом\n\n"
+            "Працюй через команди або відкрий повний генератор:"
+     ),
         "help": (
-            "📖 <b>LLM Prompt Generator — Гайд</b>\n\n"
+            "📖 <b>LLM Prompt Generator — Довідка</b>\n\n"
             "<b>Команди:</b>\n"
-            "• /prompt — інтерактивний генератор (сцена, стиль, освітлення, настрій, жанр)\n"
-            "• /random — рандомна тема + параметри → одразу генерація\n"
-            "• /help — ця довідка\n\n"
-            "<b>Модель:</b> qwen/qwen3-32b через Groq API\n"
-            "<b>Архітектура:</b> Lumina2 / ZIT (CFG 1.5, Steps 12)\n\n"
-            "Для розширених налаштувань — відкрий повний генератор:"
-        ),
+            "📝 /prompt — створити промпт з параметрами\n"
+            "🎲 /random — випадковий промпт\n"
+            "🖼 /image — згенерувати зображення\n"
+            "🤖 /chat — AI асистент\n"
+            "🔍 /search — пошук в інтернеті\n"
+            "❓ /help — ця довідка\n"
+            "👋 /stop — завершити чат з AI асистентом\n\n"
+            "<b>Як користуватись:</b>\n"
+            "• /prompt — коли потрібен контроль (сцена, стиль, світло, настрій)\n"
+            "• /random — коли потрібна ідея або швидкий старт\n"
+            "• /image — щоб одразу отримати зображення за темою\n"
+            "• /chat — для діалогу з AI (питання, тексти, допомога)\n"
+            "• /search — коли потрібна актуальна інформація з інтернету\n"
+            "• /stop — щоб завершити чат з AI асистентом\n\n"
+            "Для розширених налаштувань відкрий повний генератор:"
+),
         "subject_prompt": "✍️ <b>Введи тему</b>\n\nОпиши що зобразити. Можна українською — LLM перекладе автоматично.",
         "scene_prompt": "🎬 <b>Сцена</b>\n\nОбери тип кадрування:",
         "style_group_prompt": "🎨 <b>Стиль — група</b>\n\nОбери категорію стилю:",
@@ -46,12 +59,16 @@ UI = {
     "en": {
         "welcome": (
             "👋 Hi, <b>{name}</b>!\n\n"
-            "I'm <b>LLM Prompt Generator</b> — generating structured prompts for AI image generation.\n\n"
+            "I'm <b>LLM Prompt Generator</b> — I generate structured prompts and execute AI queries.\n\n"
             "<b>Commands:</b>\n"
-            "🎨 /prompt — generator with parameters\n"
+            "📝 /prompt — generate a prompt\n"
             "🎲 /random — random prompt\n"
-            "❓ /help — guide\n\n"
-            "Or open the full generator:"
+            "🖼 /image — generate an image\n"
+            "🤖 /chat — AI assistant\n"
+            "🔍 /search — web search\n"
+            "❓ /help — guide\n"
+            "👋 /stop — end chat with AI assistant\n\n"
+            "Use commands or open the full generator:"
         ),
         "help": (
             "📖 <b>LLM Prompt Generator — Guide</b>\n\n"
