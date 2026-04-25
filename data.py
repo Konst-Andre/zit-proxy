@@ -18,7 +18,7 @@ UI = {
             "🔍 /search — пошук в інтернеті\n"
             "❓ /help — довідка\n"
             "👋 /stop — завершити чат з AI асистентом\n\n"
-            "💡 Працює і в інших чатах: @username запит\n\n"
+            "💡 Працює і в інших чатах: @username_bot запит\n\n"
             "Працюй через команди або відкрий повний генератор:"
      ),
         "help": (
@@ -70,7 +70,7 @@ UI = {
             "🔍 /search — web search\n"
             "❓ /help — guide\n"
             "👋 /stop — end chat with AI assistant\n\n"
-            "💡 Use in any chat: @username query\n\n"
+            "💡 Use in any chat: @username_bot query\n\n"
             "Use commands or open the full generator:"
         ),
         "help": (
