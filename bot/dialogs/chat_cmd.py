@@ -503,7 +503,8 @@ async def cmd_chat(message: Message, state: FSMContext) -> None:
         "— summarize articles by URL\n\n"
         "💡 <b>Tip</b>\n"
         "/search query — web search (in /chat mode)\n\n"
-        "👋 /stop — end chat"
+        "👋 /stop — end chat",
+        parse_mode="HTML",
     )
 
 
