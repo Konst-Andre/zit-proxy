@@ -17,7 +17,7 @@ UI = {
             "🤖 /chat — AI асистент\n"
             "❓ /help — довідка\n"
             "👋 /stop — завершити чат з AI асистентом\n\n"
-            "💡 Працює і в інших чатах: @username_bot запит\n\n"
+            "💡 Працює і в інших чатах: @zit_prompt_bot запит\n\n"
             "Працюй через команди або відкрий повний генератор:"
      ),
         "help": (
@@ -87,7 +87,7 @@ UI = {
     "• /search — web search (in /chat mode)\n"
     "• /stop — to exit AI assistant mode\n\n"
     "For advanced settings open the full generator:"
-    "💡 Works in any chat: @username cat cinematic"
+    "💡 Works in any chat: @zit_prompt_bot cat cinematic"
 ),
    "subject_prompt": "✍️ <b>Enter subject</b>\n\nDescribe what to generate. Any language — will be translated automatically.",
    "scene_prompt": "🎬 <b>Scene</b>\n\nSelect framing:",
