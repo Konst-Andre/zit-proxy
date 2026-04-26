@@ -32,7 +32,7 @@ GROQ_URL       = "https://api.groq.com/openai/v1/chat/completions"
 TAVILY_URL     = "https://api.tavily.com/search"
 CHAT_MODEL     = "meta-llama/llama-4-scout-17b-16e-instruct"  # 30K TPM, better chat/creative
 
-MAX_HISTORY    = 10      # було 20 — зменшуємо щоб не перевищити Groq limit
+MAX_HISTORY    = 20      # Scout має 30K TPM — можна зберігати більше history
 AUTO_RESET_MIN = 30
 HISTORY_TTL    = 86400
 
@@ -577,18 +577,8 @@ async def on_chat_message(message: Message, state: FSMContext) -> None:
 
     history  = await _load_history(user_id)
 
-    # Обрізаємо контент повідомлень в history щоб не перевищити Groq limit
-    # Зберігаємо повні повідомлення в Redis, але надсилаємо скорочені
-    trimmed_history = []
-    for msg in history[-MAX_HISTORY:]:
-        content = msg.get("content", "")
-        trimmed_history.append({
-            "role": msg["role"],
-            "content": content[:500] if len(content) > 500 else content,
-        })
-
     messages = [{"role": "system", "content": _get_system_prompt()}]
-    messages += trimmed_history
+    messages += history[-MAX_HISTORY:]
     messages.append({"role": "user", "content": message.text})
 
     wait = await message.answer("💭")
