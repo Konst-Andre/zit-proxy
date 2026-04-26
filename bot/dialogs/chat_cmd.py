@@ -166,7 +166,7 @@ async def tool_get_weather(city: str) -> str:
 async def tool_get_exchange_rate(from_cur: str, to_cur: str) -> str:
     """Get exchange rate via frankfurter.app (free, no API key)."""
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             r = await client.get(
                 f"https://api.frankfurter.app/latest?from={from_cur.upper()}&to={to_cur.upper()}"
             )
@@ -351,7 +351,7 @@ async def groq_chat(messages: list[dict], message: Message | None = None) -> str
     async with httpx.AsyncClient(timeout=45.0) as client:
         r = await client.post(GROQ_URL, json={
             "model": CHAT_MODEL, "messages": messages,
-            "tools": TOOLS, "tool_choice": "auto", "max_tokens": 1024,
+            "tools": TOOLS, "tool_choice": "auto", "max_tokens": 2048,
         }, headers=headers)
     r.raise_for_status()
 
@@ -384,6 +384,9 @@ async def groq_chat(messages: list[dict], message: Message | None = None) -> str
             if extra:
                 extra_results.append(extra)
 
+        # Збираємо які side effects вже надіслано — щоб модель не галюцинувала
+        sent_effects = []
+
         # Side effects — надсилаємо image/prompt ДО фінальної відповіді
         if message:
             for extra in extra_results:
@@ -394,6 +397,7 @@ async def groq_chat(messages: list[dict], message: Message | None = None) -> str
                             photo=photo,
                             caption=f"🎨 {extra['prompt'][:200]}",
                         )
+                        sent_effects.append("image_sent")
                     except Exception as e:
                         logger.warning("Failed to send image: %s", e)
 
@@ -401,21 +405,27 @@ async def groq_chat(messages: list[dict], message: Message | None = None) -> str
                     data = extra["data"]
                     pos  = data.get("positive", "")
                     neg  = data.get("negative", "")
-                    # Окреме повідомлення з code блоками для легкого копіювання
                     try:
                         await message.answer(
                             f"📋 <b>POSITIVE</b>\n<code>{pos[:900]}</code>\n\n"
                             f"📋 <b>NEGATIVE</b>\n<code>{neg[:300]}</code>",
                             parse_mode="HTML",
                         )
+                        sent_effects.append("prompt_sent")
                     except Exception as e:
                         logger.warning("Failed to send prompt block: %s", e)
 
-        # Фінальний виклик — тільки tool results, без дублювання user message
+        # Фінальний виклик — повідомляємо модель що вже надіслано
+        note = ""
+        if "image_sent" in sent_effects:
+            note = " The image has already been sent to the user as a photo message — do NOT mention file links or image.png."
+        if "prompt_sent" in sent_effects:
+            note += " The prompt has already been sent as a formatted code block — do NOT repeat it."
+
         final_messages = messages + tool_messages
         final_messages.append({
             "role": "user",
-            "content": "Based on the tool results above, give a concise reply to my question. /no_think",
+            "content": f"Based on the tool results above, give a concise reply.{note} /no_think",
         })
         async with httpx.AsyncClient(timeout=45.0) as client:
             r2 = await client.post(GROQ_URL, json={
