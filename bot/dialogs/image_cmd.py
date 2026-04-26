@@ -48,7 +48,7 @@ SCENE_BUTTONS = [
 
 
 def _scene_keyboard(lang: str) -> InlineKeyboardMarkup:
-    idx = 2 if lang == "ua" else 1  # label index
+    idx = 2 if lang == "ua" else 1
     buttons = [
         InlineKeyboardButton(
             text=s[idx],
@@ -58,9 +58,9 @@ def _scene_keyboard(lang: str) -> InlineKeyboardMarkup:
     ]
     auto_label = "🎯 Авто-визначити" if lang == "ua" else "🎯 Auto-detect"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [buttons[0], buttons[1]],   # Portrait    | Full body
-        [buttons[2], buttons[3]],   # Landscape   | Product
-        [buttons[4], buttons[5]],   # Animal      | Concept
+        [buttons[0], buttons[1]],
+        [buttons[2], buttons[3]],
+        [buttons[4], buttons[5]],
         [InlineKeyboardButton(text=auto_label, callback_data="img_scene:auto")],
     ])
 
@@ -191,9 +191,8 @@ async def _run_image(
         negative=negative, scene=scene, lang=lang,
     )
 
-    # Обрізаємо plain text ДО побудови HTML — щоб не розрізати теги
     subject_safe  = subject[:80]
-    positive_safe = positive[:700]   # залишає місце для negative + оформлення
+    positive_safe = positive[:700]
     negative_safe = negative[:200]
 
     caption = (
@@ -247,7 +246,6 @@ async def on_subject(message: Message, state: FSMContext) -> None:
         )
         return
 
-    # Зберігаємо тему → переходимо до вибору сцени
     await state.set_state(ImageFSM.scene)
     await state.update_data(subject=subject)
 
@@ -267,26 +265,36 @@ async def on_subject(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(ImageFSM.scene, F.data.startswith("img_scene:"))
 async def on_scene_selected(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+
+    # Dedup: ігноруємо webhook retry якщо вже генеруємо
+    if data.get("_processing"):
+        try:
+            await callback.answer()
+        except Exception:
+            pass
+        return
+
+    await state.update_data(_processing=True)
     try:
         await callback.answer()
     except Exception:
         pass
 
-    data    = await state.get_data()
-    lang    = data.get("lang", "ua")
-    subject = data.get("subject", "")
+    lang      = data.get("lang", "ua")
+    subject   = data.get("subject", "")
     scene_val = callback.data.split(":", 1)[1]
+    scene     = _detect_scene(subject) if scene_val == "auto" else scene_val
 
-    # Авто-визначення якщо юзер натиснув "Авто"
-    scene = _detect_scene(subject) if scene_val == "auto" else scene_val
-
-    # Видаляємо повідомлення з кнопками сцен
     try:
         await callback.message.delete()
     except Exception:
         pass
 
-    await _run_image(callback.message, state, subject, scene, lang)
+    try:
+        await _run_image(callback.message, state, subject, scene, lang)
+    finally:
+        await state.update_data(_processing=False)
 
 
 # ─── RESULT CALLBACKS ────────────────────────────────────────────────────────
@@ -307,15 +315,30 @@ async def cb_new(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(ImageFSM.result, F.data == "img:regen")
 async def cb_regen(callback: CallbackQuery, state: FSMContext) -> None:
-    data    = await state.get_data()
+    data = await state.get_data()
+
+    # Dedup: ігноруємо webhook retry якщо вже генеруємо
+    if data.get("_processing"):
+        try:
+            await callback.answer()
+        except Exception:
+            pass
+        return
+
     lang    = data.get("lang", "ua")
     subject = data.get("subject", "")
     scene   = data.get("scene", "portrait")
+
+    await state.update_data(_processing=True)
     try:
         await callback.answer()
     except Exception:
         pass
-    await _run_image(callback.message, state, subject, scene, lang)
+
+    try:
+        await _run_image(callback.message, state, subject, scene, lang)
+    finally:
+        await state.update_data(_processing=False)
 
 
 @router.callback_query(ImageFSM.result, F.data == "img:copy")
