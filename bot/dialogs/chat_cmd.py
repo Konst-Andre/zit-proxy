@@ -481,27 +481,29 @@ async def cmd_chat(message: Message, state: FSMContext) -> None:
     await state.set_state(ChatFSM.active)
     await state.update_data(lang=lang, last_ts=time.time())
     await message.answer(
-        "🤖 Prompt Assistant\n\n"
-        "Привіт! Можу:\n"
-        "• відповідати на питання\n"
-        "• шукати актуальну інфо в інтернеті\n"
-        "• створювати промпти для зображень\n"
-        "• генерувати зображення\n"
-        "• показати погоду або курс валют\n"
-        "• переказати статтю по URL\n\n"
-        "💡 Підказка: /search запит — швидкий пошук без зайвих слів\n"
-        "/stop — завершити чат"
+        "🤖 <b>Prompt Assistant</b>\n\n"
+        "Привіт! Я допоможу:\n"
+        "— відповісти на запитання\n"
+        "— знайти інформацію в інтернеті\n"
+        "— створити промпт для зображення\n"
+        "— згенерувати зображення\n"
+        "— показати погоду або курс валют\n"
+        "— стисло переказати статтю за URL\n\n"
+        "💡 <b>Підказка</b>\n"
+        "/search запит — пошук в інтернеті (у режимі /chat)\n\n"
+        "👋 /stop — завершити чат"
         if lang == "ua" else
-        "🤖 Prompt Assistant\n\n"
-        "Hey! I can:\n"
-        "• answer any questions\n"
-        "• search the web for current info\n"
-        "• create image generation prompts\n"
-        "• generate images\n"
-        "• show weather or exchange rates\n"
-        "• summarize articles by URL\n\n"
-        "💡 Tip: /search query — quick search, no extra words needed\n"
-        "/stop — end chat"
+        "🤖 <b>Prompt Assistant</b>\n\n"
+        "Hey! I can help you:\n"
+        "— answer questions\n"
+        "— find information on the web\n"
+        "— create prompts for images\n"
+        "— generate images\n"
+        "— show weather and exchange rates\n"
+        "— summarize articles by URL\n\n"
+        "💡 <b>Tip</b>\n"
+        "/search query — web search (in /chat mode)\n\n"
+        "👋 /stop — end chat"
     )
 
 
@@ -514,7 +516,7 @@ async def cmd_stop(message: Message, state: FSMContext) -> None:
         await _clear_history(message.from_user.id)
         await state.clear()
         await message.answer(
-            "👋 Чат завершено. Історію очищено." if lang == "ua"
+            "👋 Чат з AI асистентом завершено. Історію очищено." if lang == "ua"
             else "👋 Chat ended. History cleared."
         )
     else:
