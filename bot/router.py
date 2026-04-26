@@ -52,13 +52,13 @@ def create_dispatcher() -> Dispatcher:
     # Cold start warning — перехоплює всі повідомлення
     dp.message.middleware(ColdStartMiddleware())
 
-    # Register routers (order matters — dialogs must be registered via setup_dialogs)
-    dp.include_router(static_router)
+    # Register routers — порядок важливий
+    dp.include_router(chat_router)         # ← /chat, /search, /stop — першими
+    dp.include_router(static_router)       # ← /start, /help
     dp.include_router(random_router)
     dp.include_router(vision_router)
-    dp.include_router(image_router)        # ← /image
-    dp.include_router(chat_router)         # ← /chat agent
-    dp.include_router(inline_router)       # ← inline
+    dp.include_router(image_router)
+    dp.include_router(inline_router)
     dp.include_router(prompt_entry_router)
 
     # Register aiogram-dialog dialogs
