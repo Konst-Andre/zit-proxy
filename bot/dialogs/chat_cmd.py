@@ -1,5 +1,6 @@
 """
-ZIT Bot — /chat Agent Handler v3
+ZIT Bot — /chat Agent Handler v4
+Model: Llama 4 Scout (30K TPM, multimodal, better creative/chat)
 Tools: web_search, generate_prompt, generate_image, get_weather, get_exchange_rate, summarize_url
 Prompt output → окреме повідомлення з <code> для легкого копіювання
 Image output → окреме повідомлення з фото
@@ -29,9 +30,9 @@ GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 GROQ_URL       = "https://api.groq.com/openai/v1/chat/completions"
 TAVILY_URL     = "https://api.tavily.com/search"
-CHAT_MODEL     = "qwen/qwen3-32b"
+CHAT_MODEL     = "meta-llama/llama-4-scout-17b-16e-instruct"  # 30K TPM, better chat/creative
 
-MAX_HISTORY    = 20
+MAX_HISTORY    = 10      # було 20 — зменшуємо щоб не перевищити Groq limit
 AUTO_RESET_MIN = 30
 HISTORY_TTL    = 86400
 
@@ -57,14 +58,14 @@ Your tools:
 Behavior rules:
 - Be concise but thorough — Telegram messages have limits
 - Use Ukrainian when user writes in Ukrainian, English otherwise
-- For factual/current info → use web_search
-- For image prompt requests → use generate_prompt (NOT plain text)
-- For "draw", "generate image", "намалюй", "зроби зображення" → use generate_image
-- For weather questions → use get_weather
-- For currency/exchange → use get_exchange_rate
-- For URLs → use summarize_url
+- For factual/current info → use web_search tool
+- For image prompt requests → use generate_prompt tool (NOT plain text)
+- For "draw", "generate image", "намалюй", "зроби зображення" → use generate_image tool
+- For weather questions → use get_weather tool
+- For currency/exchange → use get_exchange_rate tool
+- For URLs → use summarize_url tool
 - Do NOT mention SDXL, Flux, Stable Diffusion — say "AI image generator"
-- Do NOT output <think> blocks
+- Keep responses focused and natural — no unnecessary padding
 
 Current date: {date}
 """
@@ -425,7 +426,7 @@ async def groq_chat(messages: list[dict], message: Message | None = None) -> str
         final_messages = messages + tool_messages
         final_messages.append({
             "role": "user",
-            "content": f"Based on the tool results above, give a concise reply.{note} /no_think",
+            "content": f"Based on the tool results above, give a concise reply.{note}",
         })
         async with httpx.AsyncClient(timeout=45.0) as client:
             r2 = await client.post(GROQ_URL, json={
@@ -575,8 +576,19 @@ async def on_chat_message(message: Message, state: FSMContext) -> None:
     await state.update_data(last_ts=time.time())
 
     history  = await _load_history(user_id)
+
+    # Обрізаємо контент повідомлень в history щоб не перевищити Groq limit
+    # Зберігаємо повні повідомлення в Redis, але надсилаємо скорочені
+    trimmed_history = []
+    for msg in history[-MAX_HISTORY:]:
+        content = msg.get("content", "")
+        trimmed_history.append({
+            "role": msg["role"],
+            "content": content[:500] if len(content) > 500 else content,
+        })
+
     messages = [{"role": "system", "content": _get_system_prompt()}]
-    messages += history
+    messages += trimmed_history
     messages.append({"role": "user", "content": message.text})
 
     wait = await message.answer("💭")
@@ -586,10 +598,18 @@ async def on_chat_message(message: Message, state: FSMContext) -> None:
     except Exception as e:
         logger.exception("groq_chat failed")
         await wait.delete()
-        await message.answer(
-            f"❌ Помилка: {str(e)[:120]}" if lang == "ua"
-            else f"❌ Error: {str(e)[:120]}"
-        )
+        err_str = str(e)
+        if "413" in err_str:
+            await message.answer(
+                "⚠️ Історія чату завелика. Введи /stop щоб очистити і почати знову."
+                if lang == "ua" else
+                "⚠️ Chat history is too large. Type /stop to clear and start fresh."
+            )
+        else:
+            await message.answer(
+                f"❌ Помилка: {err_str[:120]}" if lang == "ua"
+                else f"❌ Error: {err_str[:120]}"
+            )
         return
 
     await wait.delete()
