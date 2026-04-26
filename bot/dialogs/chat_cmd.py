@@ -165,16 +165,18 @@ async def tool_get_weather(city: str) -> str:
 
 
 async def tool_get_exchange_rate(from_cur: str, to_cur: str) -> str:
-    """Get exchange rate via frankfurter.app (free, no API key)."""
+    """Get exchange rate via frankfurter.dev v2 (free, no API key, 54 central banks)."""
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            r = await client.get(
-                f"https://api.frankfurter.app/latest?from={from_cur.upper()}&to={to_cur.upper()}"
-            )
+        url = f"https://api.frankfurter.dev/v2/rate/{from_cur.upper()}/{to_cur.upper()}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(url)
+        if r.status_code == 404:
+            return f"Currency pair {from_cur.upper()}/{to_cur.upper()} not found."
+        r.raise_for_status()
         data = r.json()
-        rate = data.get("rates", {}).get(to_cur.upper())
+        rate = data.get("rate")
         if rate:
-            return f"1 {from_cur.upper()} = {rate} {to_cur.upper()} (frankfurter.app)"
+            return f"1 {from_cur.upper()} = {rate} {to_cur.upper()} (frankfurter.dev)"
         return f"Rate not found for {from_cur}/{to_cur}"
     except Exception as e:
         return f"Exchange error: {str(e)[:100]}"
@@ -487,8 +489,8 @@ async def cmd_chat(message: Message, state: FSMContext) -> None:
         "• генерувати зображення\n"
         "• показати погоду або курс валют\n"
         "• переказати статтю по URL\n\n"
-        "/stop — завершити чат\n"
-        "/search запит — швидкий пошук"
+        "💡 Підказка: /search запит — швидкий пошук без зайвих слів\n"
+        "/stop — завершити чат"
         if lang == "ua" else
         "🤖 Prompt Assistant\n\n"
         "Hey! I can:\n"
@@ -498,8 +500,8 @@ async def cmd_chat(message: Message, state: FSMContext) -> None:
         "• generate images\n"
         "• show weather or exchange rates\n"
         "• summarize articles by URL\n\n"
-        "/stop — end chat\n"
-        "/search query — quick search"
+        "💡 Tip: /search query — quick search, no extra words needed\n"
+        "/stop — end chat"
     )
 
 
